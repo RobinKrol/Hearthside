@@ -1,47 +1,41 @@
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-
-public class Gem : MonoBehaviour
+public class Gem : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 {
-    public int row;     // ряд (0-4)
-    public int column;  // колонка (0-6)
-    public int gemType; // тип: 0-красный, 1-фиолетовый, 2-желтый, 3-зеленый, 4-белый
+    public int row;
+    public int column;
+    public int gemType;
 
     private Image image;
-    private Button button;
-    private BoardManager boardManagers;
+    private BoardManager boardManager;
 
     void Awake()
     {
         image = GetComponent<Image>();
-        button = GetComponent<Button>();
-
-        button.onClick.AddListener(OnClick);
-
-        boardManagers = FindAnyObjectByType<BoardManager>();
-
+        boardManager = BoardManager.Instance; // Оптимизация: прямое обращение к Instance
     }
 
-    public void Setup (int newRow, int newCol, int type)
+    public void Setup(int newRow, int newCol, int type)
     {
         row = newRow;
         column = newCol;
         gemType = type;
 
-        if (BoardManager.Instance != null)
+        if (boardManager != null)
         {
-            BoardManager.Instance.RegisterGem(this, row, column);
+            boardManager.RegisterGem(this, row, column);
         }
     }
 
-    void OnClick()
+    public void OnPointerDown(PointerEventData eventData)
     {
-        if (BoardManager.Instance != null)
-        {
-            BoardManager.Instance.OnGemClicked(this);
-        }
+        boardManager?.StartDragging(this);
     }
-   
+
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        boardManager?.StopDragging(this);
+    }
 }
