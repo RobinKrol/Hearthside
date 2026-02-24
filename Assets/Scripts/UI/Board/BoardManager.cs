@@ -8,19 +8,22 @@ using System.Collections.Generic;
 public class BoardManager : MonoBehaviour
 {
     public static BoardManager Instance;
-
+    
+    [Header("Размеры сетки")]
     public int columns = 7;
     public int rows = 5;
 
-    
+    [Header("Настройки свайпа")]
+    private float dragThreshold = 30f;
+    public bool enableAnimations = true;
+
+
     private Gem[,] grid;
     private Gem draggedGem;             // кристалл который тащим
     private bool isDragging = false;    // тащим ли сейчас
     private Vector2 dragStartPos;       // позиция начала таскания
-    private float dragThreshold = 30f;  // минимальное расстояние для свайпа (в пикселях)
+    
 
-    private Gem firstSelected;
-    private Gem secondSelected;
 
     void Awake()
     {
@@ -28,284 +31,263 @@ public class BoardManager : MonoBehaviour
         grid = new Gem[rows, columns];
     }
 
-       
-    public void RegisterGem (Gem gem, int roow, int col)
+    public void RegisterGem(Gem gem, int row, int col)
     {
-        grid[roow, col] = gem;
-        
-        // Обновляем позицию кристалла в соответствии с сеткой
-        if (gem != null)
+        if (row >= 0 && row < rows && col >= 0 && col < columns)
         {
-            gem.row = roow;
-            gem.column = col;
-            Debug.Log($"[REGISTER] Кристалл зарегистрирован на позиции: [{roow}, {col}]");
+            grid[row, col] = gem;
+            Debug.Log($"[REGISTER] Кристалл типа {gem.gemType} помещен в сетку [{row}, {col}]");
         }
     }
-   
-    // Начало перетаскивания - вызывается из Gem
-    public void StartDragging (Gem gem)
+
+
+
+     // Находим позицию кристалла в grid
+    (int row, int col) FindGemPosition(Gem gem)
     {
-        if (isDragging) return; // Защита от повторного начала перетаскивания
-        
-        // Проверка на null
-        if (gem == null)
-        {
-            Debug.LogError("StartDragging: gem is null");
-            return;
-        }
-        
-        // Немедленно обновляем позицию кристалла в соответствии с его реальным положением в сетке
-        UpdateGemPosition(gem);
-        
-        draggedGem = gem;
-        isDragging = true;
-        dragStartPos = Mouse.current.position.ReadValue();
-        
-        // Дебаг: выводим позицию выбранного кристалла
-        Debug.Log($"[DRAG] Выбран кристалл на позиции: [{gem.row}, {gem.column}] (тип: {gem.gemType})");
-    }
-    
-    // Конец перетаскивания - вызывается из Gem
-    public void StopDragging (Gem gem)
-    {
-        if (!isDragging || draggedGem != gem) return;
-
-        // Дополнительная проверка на null
-        if (gem == null)
-        {
-            Debug.LogError("StopDragging: gem is null");
-            ResetDrag();
-            return;
-        }
-        
-        // Немедленно обновляем позицию кристалла в соответствии с его реальным положением в сетке
-        UpdateGemPosition(gem);
-
-        Vector2 dragEndPos = Mouse.current.position.ReadValue();
-        Vector2 dragDelta = dragEndPos - dragStartPos;
-
-        if (dragDelta.magnitude < dragThreshold)
-        {
-            ResetDrag();
-            return;
-        }
-
-        Direction swipeDir = GetSwipeDirection(dragDelta);
-        Gem neighbor = GetNeighborInDirection(gem, swipeDir);
-
-        // Дебаг: выводим информацию о свайпе и целевом кристалле
-        string directionName = swipeDir.ToString();
-        Debug.Log($"[SWIPE] Свайп в направлении: {directionName} (длина: {dragDelta.magnitude:F1}px)");
-        
-        if (neighbor != null)
-        {
-            Debug.Log($"[SWAP] Меняем кристалл [{gem.row}, {gem.column}] (тип: {gem.gemType}) с кристаллом [{neighbor.row}, {neighbor.column}] (тип: {neighbor.gemType})");
-            SwapGems(gem, neighbor);
-            
-            // Дополнительная проверка синхронизации после обновления
-            Debug.Log($"[SYNC] После обновления: кристалл [{gem.row}, {gem.column}] (тип: {gem.gemType})");
-        }
-        else
-        {
-            Debug.Log($"[SWIPE] Нет соседа в направлении {directionName} для кристалла [{gem.row}, {gem.column}]");
-        }
-        
-        ResetDrag();
-    }
-    // Определяем направление свайпа
-    Direction GetSwipeDirection(Vector2 delta)
-    {
-        // Нормализуем вектор для более точного определения направления
-        Vector2 normalizedDelta = delta.normalized;
-        
-        // Определяем угол в градусах
-        float angle = Mathf.Atan2(normalizedDelta.y, normalizedDelta.x) * Mathf.Rad2Deg;
-        
-        // Приводим угол к диапазону 0-360
-        if (angle < 0) angle += 360;
-        
-        // Определяем направление по углам
-        if (angle >= 315 || angle < 45) return Direction.Right;      // 315-360, 0-45
-        if (angle >= 45 && angle < 135) return Direction.Up;        // 45-135
-        if (angle >= 135 && angle < 225) return Direction.Left;     // 135-225
-        return Direction.Down;                                      // 225-315
-    }
-    // Получаем соседа в направлении
-    Gem GetNeighborInDirection(Gem gem, Direction dir)
-    {
-        // Проверяем, что gem не null
-        if (gem == null)
-        {
-            Debug.LogError("GetNeighborInDirection: gem is null");
-            return null;
-        }
-
-        int targetRow = gem.row;
-        int targetCol = gem.column;
-
-        switch (dir)
-        {
-            case Direction.Up:    targetRow--; break;
-            case Direction.Down:  targetRow++; break;
-            case Direction.Left:  targetCol--; break;
-            case Direction.Right: targetCol++; break;
-        }
-
-        // Проверяем границы
-        if (targetRow >= 0 && targetRow < rows && targetCol >= 0 && targetCol < columns)
-        {
-            return grid[targetRow, targetCol];
-        }
-
-        return null;
-    }
-
-    void ResetDrag()
-    {
-        draggedGem = null;
-        isDragging = false;
-    }
-
-    // Метод для обновления позиции одного кристалла в соответствии с сеткой
-    void UpdateGemPosition(Gem gem)
-    {
-        if (gem == null) return;
-        
-        // Находим реальное положение кристалла в сетке
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < columns; c++)
             {
                 if (grid[r, c] == gem)
-                {
-                    // Обновляем координаты кристалла в соответствии с его реальным положением в сетке
-                    gem.row = r;
-                    gem.column = c;
-                    
-                    // Дебаг: выводим обновленные координаты
-                    Debug.Log($"[UPDATE] Кристалл [{r}, {c}] обновлен: row={gem.row}, col={gem.column}");
-                    return;
-                }
+                    return (r, c);
             }
         }
+        return (-1, -1);
+    }
+
+    // ===== ПЕРЕТАСКИВАНИЕ =====
+     public void StartDragging(Gem gem)
+    {
+        if (isDragging) return;
         
-        // Если кристалл не найден в сетке
-        Debug.LogWarning($"[UPDATE] Кристалл не найден в сетке: row={gem.row}, col={gem.column}");
-        
-        // Дополнительная проверка: может быть кристалл в сетке, но с другими координатами?
-        for (int r = 0; r < rows; r++)
+        var (row, col) = FindGemPosition(gem);
+        if (row == -1)
         {
-            for (int c = 0; c < columns; c++)
+            Debug.LogError("StartDragging: кристалл не найден в сетке!");
+            return;
+        }
+        
+        draggedGem = gem;
+        isDragging = true;
+        dragStartPos = Mouse.current.position.ReadValue();
+        
+        Debug.Log($"[DRAG] Выбран кристалл из клетки [{row}, {col}] (тип: {gem.gemType})");
+    }
+    
+    // Конец перетаскивания - вызывается из Gem
+     public void StopDragging(Gem gem)
+    {
+        if (!isDragging || draggedGem != gem) return;
+        
+        // Обновляем позицию кристалла за мышкой
+        gem.UpdateDragPosition(Mouse.current.position.ReadValue());
+        
+        Vector2 dragEndPos = Mouse.current.position.ReadValue();
+        Vector2 dragDelta = dragEndPos - dragStartPos;
+        
+        if (dragDelta.magnitude < dragThreshold)
+        {
+            Debug.Log("[SWIPE] Слишком короткий свайп");
+            gem.ReturnToOriginalPosition();
+            ResetDrag();
+            return;
+        }
+
+        Direction swipeDir = GetSwipeDirection(dragDelta);
+        var (gemRow, gemCol) = FindGemPosition(gem);
+        
+        if (gemRow == -1)
+        {
+            gem.ReturnToOriginalPosition();
+            ResetDrag();
+            return;
+        }
+
+        var (targetRow, targetCol) = GetTargetPosition(gemRow, gemCol, swipeDir);
+
+        if (targetRow >= 0 && targetRow < rows && targetCol >= 0 && targetCol < columns)
+        {
+            Gem neighbor = grid[targetRow, targetCol];
+            if (neighbor != null)
             {
-                if (grid[r, c] != null && grid[r, c].row == gem.row && grid[r, c].column == gem.column)
+                Debug.Log($"[SWAP] Меняем кристаллы: [{gemRow}, {gemCol}] <-> [{targetRow}, {targetCol}]");
+                
+                if (enableAnimations)
                 {
-                    Debug.LogWarning($"[UPDATE] Найден кристалл с такими же координатами в [{r}, {c}]: row={grid[r, c].row}, col={grid[r, c].column}");
+                    StartCoroutine(AnimatedSwap(gem, neighbor, gemRow, gemCol, targetRow, targetCol));
+                }
+                else
+                {
+                    SwapGems(gemRow, gemCol, targetRow, targetCol);
+                    gem.ReturnToOriginalPosition();
                 }
             }
+            else
+            {
+                gem.ReturnToOriginalPosition();
+            }
+        }
+        else
+        {
+            gem.ReturnToOriginalPosition();
+        }
+        
+        ResetDrag();
+    }
+
+     (int, int) GetTargetPosition(int row, int col, Direction dir)
+    {
+        switch (dir)
+        {
+            case Direction.Up:    return (row - 1, col);
+            case Direction.Down:  return (row + 1, col);
+            case Direction.Left:  return (row, col - 1);
+            case Direction.Right: return (row, col + 1);
+            default: return (row, col);
         }
     }
 
-    // Метод для обновления позиций всех кристаллов в соответствии с сеткой
-    public void UpdateGemPositions()
+     Direction GetSwipeDirection(Vector2 delta)
     {
-        Debug.Log("[UPDATE] Начинаем обновление позиций всех кристаллов...");
+        Vector2 normalizedDelta = delta.normalized;
+        float angle = Mathf.Atan2(normalizedDelta.y, normalizedDelta.x) * Mathf.Rad2Deg;
+        if (angle < 0) angle += 360;
         
+        if (angle >= 315 || angle < 45) return Direction.Right;
+        if (angle >= 45 && angle < 135) return Direction.Up;
+        if (angle >= 135 && angle < 225) return Direction.Left;
+        return Direction.Down;
+    }
+
+    // ===== ОБМЕН КРИСТАЛЛОВ =====
+
+    void SwapGems(int row1, int col1, int row2, int col2)
+    {
+        Gem gem1 = grid[row1, col1];
+        Gem gem2 = grid[row2, col2];
+        
+        if (gem1 == null || gem2 == null)
+        {
+            Debug.LogError($"[SWAP] Один из кристаллов null: [{row1}, {col1}] = {gem1}, [{row2}, {col2}] = {gem2}");
+            return;
+        }
+        
+        // Меняем спрайты
+        Sprite tempSprite = gem1.GetComponent<Image>().sprite;
+        gem1.GetComponent<Image>().sprite = gem2.GetComponent<Image>().sprite;
+        gem2.GetComponent<Image>().sprite = tempSprite;
+        
+        // Меняем типы
+        int tempType = gem1.gemType;
+        gem1.gemType = gem2.gemType;
+        gem2.gemType = tempType;
+        
+        // Меняем местами в grid
+        grid[row1, col1] = gem2;
+        grid[row2, col2] = gem1;
+        
+        Debug.Log($"[SWAP] После обмена: в [{row1}, {col1}] теперь кристалл типа {gem2.gemType}, в [{row2}, {col2}] теперь кристалл типа {gem1.gemType}");
+    }
+
+    IEnumerator AnimatedSwap(Gem gem1, Gem gem2, int row1, int col1, int row2, int col2)
+    {
+        // Запускаем анимацию обмена
+        bool animationComplete = false;
+        
+        gem1.AnimatedSwap(gem2, () => animationComplete = true);
+        
+        yield return new WaitUntil(() => animationComplete);
+        
+        // После анимации выполняем сам обмен
+        SwapGems(row1, col1, row2, col2);
+        
+        // Возвращаем кристаллы в их клетки
+        gem1.ReturnToOriginalPosition();
+        gem2.ReturnToOriginalPosition();
+        
+        // Обновляем позиции в сетке после обмена
+        UpdateGridPositions();
+    }
+    
+    void UpdateGridPositions()
+    {
+        // Проходим по всем кристаллам и обновляем их позиции в сетке
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < columns; c++)
             {
                 if (grid[r, c] != null)
                 {
-                    // Обновляем координаты кристалла в соответствии с его позицией в сетке
-                    grid[r, c].row = r;
-                    grid[r, c].column = c;
-                    
-                    // Дебаг: выводим обновленные координаты
-                    Debug.Log($"[UPDATE] Кристалл [{r}, {c}] обновлен: row={grid[r, c].row}, col={grid[r, c].column}");
+                    // Обновляем позицию кристалла в соответствии с его местом в сетке
+                    RectTransform rectTransform = grid[r, c].GetComponent<RectTransform>();
+                    if (rectTransform != null)
+                    {
+                        // Устанавливаем позицию в соответствии с сеткой
+                        // Используем размеры родительского канваса для корректного позиционирования
+                        if (rectTransform.parent != null)
+                        {
+                            RectTransform parentRect = rectTransform.parent.GetComponent<RectTransform>();
+                            if (parentRect != null)
+                            {
+                                float cellWidth = parentRect.rect.width / columns;
+                                float cellHeight = parentRect.rect.height / rows;
+                                
+                                float x = (c - (columns - 1) / 2f) * cellWidth;
+                                float y = (-(r - (rows - 1) / 2f)) * cellHeight;
+                                
+                                rectTransform.anchoredPosition = new Vector2(x, y);
+                                Debug.Log($"[UPDATE] Кристалл [{r}, {c}] обновлен: row={r}, col={c}");
+                            }
+                            else
+                            {
+                                Debug.LogError($"[UPDATE] Не удалось найти RectTransform родителя для кристалла [{r}, {c}]");
+                            }
+                        }
+                        else
+                        {
+                            Debug.LogError($"[UPDATE] У кристалла [{r}, {c}] нет родителя");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"[UPDATE] Не удалось найти RectTransform для кристалла [{r}, {c}]");
+                    }
                 }
             }
         }
-        
         Debug.Log("[UPDATE] Обновление позиций завершено");
     }
-
-    void SwapGems(Gem a, Gem b)
+    
+    void ResetDrag()
     {
-        // Проверяем, что кристаллы действительно соседи
-        if (!AreNeighbors(a, b)) return;
-
-        // Дебаг: выводим информацию о позициях до обмена
-        Debug.Log($"[SWAP] Обмен: [{a.row}, {a.column}] <-> [{b.row}, {b.column}]");
-
-        // Сохраняем ссылки на компоненты для оптимизации
-        Image imgA = a.GetComponent<Image>();
-        Image imgB = b.GetComponent<Image>();
-
-        // Меняем спрайты
-        Sprite tempSprite = imgA.sprite;
-        imgA.sprite = imgB.sprite;
-        imgB.sprite = tempSprite;
-
-        // Меняем типы
-        int tempType = a.gemType;
-        a.gemType = b.gemType;
-        b.gemType = tempType;
-
-        // Сохраняем текущие позиции
-        int aRow = a.row, aCol = a.column;
-        int bRow = b.row, bCol = b.column;
-
-        // Обновляем массив
-        grid[aRow, aCol] = b;
-        grid[bRow, bCol] = a;
-
-        // Немедленно обновляем позиции обоих кристаллов в соответствии с их новым положением в сетке
-        UpdateGemPosition(a);
-        UpdateGemPosition(b);
-
-        // Дебаг: выводим информацию о позициях после обмена
-        Debug.Log($"[SWAP] После обмена: [{a.row}, {a.column}] (тип: {a.gemType}) <-> [{b.row}, {b.column}] (тип: {b.gemType})");
+        draggedGem = null;
+        isDragging = false;
     }
+ 
+    // ===== ОТЛАДКА =====
 
-    bool AreNeighbors(Gem a, Gem b)
+     [ContextMenu("Показать сетку")]
+    public void ShowGrid()
     {
-        int rowDiff = Mathf.Abs(a.row - b.row);
-        int colDiff = Mathf.Abs(a.column - b.column);
-        
-        // Соседи только если разница в 1 по одной координате и 0 по другой
-        return (rowDiff == 1 && colDiff == 0) || (rowDiff == 0 && colDiff == 1);
-    }
-
-    // Для отладки - перечисление направлений
-    enum Direction { Up, Down, Left, Right }
-
-    // Метод для ручного вызова обновления позиций (для тестирования)
-    public void ForceUpdatePositions()
-    {
-        Debug.Log("[FORCE UPDATE] Принудительное обновление позиций всех кристаллов");
-        
-        // Сначала обновляем позиции всех кристаллов
-        UpdateGemPositions();
-        
-        // Затем дополнительно обновляем позицию каждого кристалла в массиве
+        string gridView = "\n";
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < columns; c++)
             {
                 if (grid[r, c] != null)
-                {
-                    UpdateGemPosition(grid[r, c]);
-                }
+                    gridView += $"[{grid[r, c].gemType}] ";
+                else
+                    gridView += "[ ] ";
             }
+            gridView += "\n";
         }
-        
-        Debug.Log("[FORCE UPDATE] Принудительное обновление завершено");
+        Debug.Log(gridView);
     }
 
-    // Метод для проверки синхронизации позиций (для тестирования)
-    public void CheckPositionSync()
+    [ContextMenu("Проверить синхронизацию")]
+    public void CheckSync()
     {
-        Debug.Log("[CHECK] Проверка синхронизации позиций кристаллов...");
         bool isSynced = true;
         
         for (int r = 0; r < rows; r++)
@@ -314,117 +296,26 @@ public class BoardManager : MonoBehaviour
             {
                 if (grid[r, c] != null)
                 {
-                    if (grid[r, c].row != r || grid[r, c].column != c)
+                    var (foundR, foundC) = FindGemPosition(grid[r, c]);
+                    if (foundR != r || foundC != c)
                     {
-                        Debug.LogError($"[CHECK] Несоответствие позиций: кристалл в сетке [{r}, {c}] имеет координаты [{grid[r, c].row}, {grid[r, c].column}]");
+                        Debug.LogError($"Несоответствие: кристалл в grid[{r},{c}] найден в [{foundR},{foundC}]");
                         isSynced = false;
                     }
                 }
             }
         }
         
-        if (isSynced)
-        {
-            Debug.Log("[CHECK] Все позиции синхронизированы корректно!");
-        }
-        else
-        {
-            Debug.LogError("[CHECK] Обнаружены несоответствия позиций!");
-        }
+        Debug.Log(isSynced ? "Синхронизация в порядке" : "Есть проблемы с синхронизацией");
+    }
+    
+    [ContextMenu("Принудительное обновление позиций")]
+    public void ForceUpdatePositions()
+    {
+        Debug.Log("[FORCE] Принудительное обновление позиций всех кристаллов...");
+        UpdateGridPositions();
     }
 
-    // Метод для отображения текущих позиций всех кристаллов (для тестирования)
-    public void ShowCurrentPositions()
-    {
-        Debug.Log("[SHOW] Текущие позиции всех кристаллов:");
-        
-        for (int r = 0; r < rows; r++)
-        {
-            string rowInfo = $"[ROW {r}] ";
-            for (int c = 0; c < columns; c++)
-            {
-                if (grid[r, c] != null)
-                {
-                    rowInfo += $"[{c}:{grid[r, c].gemType}({grid[r, c].row},{grid[r, c].column})] ";
-                }
-                else
-                {
-                    rowInfo += $"[  -  ] ";
-                }
-            }
-            Debug.Log(rowInfo);
-        }
-    }
-
-    // Метод для отображения детальной информации о позициях (для тестирования)
-    public void ShowDetailedPositionInfo()
-    {
-        Debug.Log("[DEBUG] === ДЕТАЛЬНАЯ ИНФОРМАЦИЯ О ПОЗИЦИЯХ ===");
-        
-        for (int r = 0; r < rows; r++)
-        {
-            for (int c = 0; c < columns; c++)
-            {
-                if (grid[r, c] != null)
-                {
-                    Gem gem = grid[r, c];
-                    Debug.Log($"[DEBUG] Сетка [{r}, {c}]: кристалл {gem.gemType}, координаты кристалла ({gem.row}, {gem.column}), соответствие: {(gem.row == r && gem.column == c ? "ДА" : "НЕТ")}");
-                }
-            }
-        }
-        
-        Debug.Log("[DEBUG] === ПРОВЕРКА ДУБЛИКАТОВ ===");
-        for (int r1 = 0; r1 < rows; r1++)
-        {
-            for (int c1 = 0; c1 < columns; c1++)
-            {
-                if (grid[r1, c1] != null)
-                {
-                    for (int r2 = 0; r2 < rows; r2++)
-                    {
-                        for (int c2 = 0; c2 < columns; c2++)
-                        {
-                            if (r1 != r2 || c1 != c2)
-                            {
-                                if (grid[r2, c2] != null && grid[r1, c1] == grid[r2, c2])
-                                {
-                                    Debug.LogError($"[DEBUG] ДУБЛИКАТ: кристалл {grid[r1, c1].gemType} найден в [{r1}, {c1}] и [{r2}, {c2}]");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        Debug.Log("[DEBUG] === ПРОВЕРКА ОТСУТСТВУЮЩИХ КРИСТАЛЛОВ ===");
-        for (int r = 0; r < rows; r++)
-        {
-            for (int c = 0; c < columns; c++)
-            {
-                if (grid[r, c] != null)
-                {
-                    bool found = false;
-                    for (int r2 = 0; r2 < rows; r2++)
-                    {
-                        for (int c2 = 0; c2 < columns; c2++)
-                        {
-                            if (grid[r2, c2] != null && grid[r2, c2].row == r && grid[r2, c2].column == c)
-                            {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (found) break;
-                    }
-                    if (!found)
-                    {
-                        Debug.LogWarning($"[DEBUG] Кристалл с координатами ({r}, {c}) не найден в сетке");
-                    }
-                }
-            }
-        }
-        
-        Debug.Log("[DEBUG] === ДЕТАЛЬНАЯ ИНФОРМАЦИЯ ЗАВЕРШЕНА ===");
-    }
+    enum Direction { Up, Down, Left, Right }
+ 
 }
