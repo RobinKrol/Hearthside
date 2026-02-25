@@ -1,125 +1,93 @@
+using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
-using UnityEngine.EventSystems;
 
-public class Gem : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
+public class Gem : MonoBehaviour
 {
-    [Header("Данные кристалла")]
-    public int gemType;
-    
-    [Header("Компоненты")]
-    private Image image;
-    private RectTransform rectTransform;
-    private BoardManager boardManager;
-
-    [Header("Состояние перетаскивания")]
-    private bool isDragging = false;
-    private Vector2 originalPosition;
-    private Transform originalParent;
-
-    void Awake()
+    public enum GemColor
     {
-        image = GetComponent<Image>();
-        boardManager = FindAnyObjectByType<BoardManager>();
-        rectTransform = GetComponent<RectTransform>();
+        Green,
+        Red,
+        Violet,
+        White,
+        Yellow
+    }
 
-        if (boardManager == null)
+    [Header("Gem Data")]
+    public GemColor color;
+    public int xIndex;
+    public int yIndex;
+
+    // Ссылки
+    private SpriteRenderer spriteRenderer;
+    private BoardManager board;
+
+    // Свайп логика
+    private Vector2 firstTouchPosition;
+    private Vector2 finalTouchPosition;
+    private bool swipeResisted = false;
+    public float swipeResist = 0.5f; // Минимальная длина свайпа
+
+    public void Setup(GemColor newColor, Sprite newSprite, int x, int y, BoardManager boardManager)
+    {
+        color = newColor;
+        xIndex = x;
+        yIndex = y;
+        board = boardManager;
+
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null)
         {
-            Debug.LogError("BoardManager не найден на сцене!");
+            spriteRenderer.sprite = newSprite;
         }
     }
 
-     public void Setup(int type)
+    private void OnMouseDown()
     {
-        gemType = type;
-        // Кристалл НЕ хранит свои координаты!
+        // Выводим данные о кристалле в консоль для проверки клика
+        Debug.Log($"Клик по кристаллу: x = {xIndex}, y = {yIndex}, цвет = {color}");
+
+        // Запоминаем позицию начала свайпа
+        firstTouchPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
     }
 
-    public void OnPointerDown(PointerEventData eventData)
+    private void OnMouseUp()
     {
-        if (isDragging) return;
-        
-        // Запоминаем исходное состояние для анимации
-        originalParent = transform.parent;
-        originalPosition = rectTransform.anchoredPosition;
-        
-        // Визуальная обратная связь при нажатии
-        transform.localScale = Vector3.one * 1.1f;
-        
-        isDragging = true;
-        boardManager?.StartDragging(this);
+        // Запоминаем позицию конца свайпа
+        finalTouchPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        CalculateAngle();
     }
 
-     public void OnPointerUp(PointerEventData eventData)
+    void CalculateAngle()
     {
-        if (!isDragging) return;
-        
-        // Возвращаем нормальный масштаб
-        transform.localScale = Vector3.one;
-        
-        isDragging = false;
-        boardManager?.StopDragging(this);
-    }
-
-    // Метод для анимации перетаскивания (будет вызываться из BoardManager)
-    public void UpdateDragPosition(Vector2 screenPosition)
-    {
-        if (!isDragging) return;
-
-        // Конвертируем экранные координаты в локальные координаты канваса
-        RectTransform canvasRect = boardManager.GetComponent<RectTransform>();
-        
-        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            canvasRect, 
-            screenPosition, 
-            null, 
-            out Vector2 localPoint))
+        // Проверяем, был ли свайп достаточно длинным (защита от случайных кликов)
+        if (Mathf.Abs(finalTouchPosition.y - firstTouchPosition.y) > swipeResist || Mathf.Abs(finalTouchPosition.x - firstTouchPosition.x) > swipeResist)
         {
-            rectTransform.localPosition = localPoint;
+            float swipeAngle = Mathf.Atan2(finalTouchPosition.y - firstTouchPosition.y, finalTouchPosition.x - firstTouchPosition.x) * 180 / Mathf.PI;
+            DetermineMoveDirection(swipeAngle);
         }
     }
-    // Метод для возврата кристалла на место (если обмен не удался)
-    public void ReturnToOriginalPosition()
-    {
-        transform.SetParent(originalParent);
-        rectTransform.anchoredPosition = originalPosition;
-        transform.localScale = Vector3.one;
-        isDragging = false;
-    }
-    // Метод для анимированного обмена (будет вызываться из BoardManager)
-    public void AnimatedSwap(Gem otherGem, System.Action onComplete)
-    {
-        // Здесь будет анимация обмена
-        // Например, перемещение кристаллов по дуге
-        StartCoroutine(SwapAnimation(otherGem, onComplete));
-    }
 
-    private System.Collections.IEnumerator SwapAnimation(Gem otherGem, System.Action onComplete)
+    void DetermineMoveDirection(float angle)
     {
-        Vector3 startPos = rectTransform.position;
-        Vector3 otherStartPos = otherGem.rectTransform.position;
-        
-        float duration = 0.3f;
-        float elapsed = 0;
-        
-        while (elapsed < duration)
+        // Вправо
+        if (angle > -45 && angle <= 45)
         {
-            elapsed += Time.deltaTime;
-            float t = elapsed / duration;
-            
-            // Плавное перемещение кристаллов
-            rectTransform.position = Vector3.Lerp(startPos, otherStartPos, t);
-            otherGem.rectTransform.position = Vector3.Lerp(otherStartPos, startPos, t);
-            
-            yield return null;
+            board.SwapGems(this, Vector2.right);
         }
-        
-        // Завершаем анимацию
-        rectTransform.position = otherStartPos;
-        otherGem.rectTransform.position = startPos;
-        
-        onComplete?.Invoke();
+        // Вверх
+        else if (angle > 45 && angle <= 135)
+        {
+            board.SwapGems(this, Vector2.up);
+        }
+        // Влево
+        else if (angle > 135 || angle <= -135)
+        {
+            board.SwapGems(this, Vector2.left);
+        }
+        // Вниз
+        else if (angle < -45 && angle >= -135)
+        {
+            board.SwapGems(this, Vector2.down);
+        }
     }
-
-
 }
