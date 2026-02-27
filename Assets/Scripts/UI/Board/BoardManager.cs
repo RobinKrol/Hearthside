@@ -87,8 +87,8 @@ public class BoardManager : MonoBehaviour
                 Gem gem = gemObject.GetComponent<Gem>();
                 if (gem != null)
                 {
-                    // Выбираем случайный цвет
-                    int randomColorIndex = Random.Range(0, gemSprites.Length);
+                    // Выбираем случайный цвет, избегая совпадений 3 в ряд
+                    int randomColorIndex = GetValidColorIndex(x, y);
                     Gem.GemColor randomColor = (Gem.GemColor)randomColorIndex;
                     Sprite randomSprite = gemSprites[randomColorIndex];
 
@@ -103,6 +103,39 @@ public class BoardManager : MonoBehaviour
                 }
             }
         }
+    }
+
+    private int GetValidColorIndex(int x, int y)
+    {
+        List<int> availableColors = new List<int>();
+        for (int i = 0; i < gemSprites.Length; i++)
+        {
+            availableColors.Add(i);
+        }
+
+        // Проверяем горизонталь (влево)
+        if (x >= 2)
+        {
+            Gem gem1 = allGems[x - 1, y];
+            Gem gem2 = allGems[x - 2, y];
+            if (gem1 != null && gem2 != null && gem1.color == gem2.color)
+            {
+                availableColors.Remove((int)gem1.color);
+            }
+        }
+
+        // Проверяем вертикаль (вниз)
+        if (y >= 2)
+        {
+            Gem gem1 = allGems[x, y - 1];
+            Gem gem2 = allGems[x, y - 2];
+            if (gem1 != null && gem2 != null && gem1.color == gem2.color)
+            {
+                availableColors.Remove((int)gem1.color);
+            }
+        }
+
+        return availableColors[Random.Range(0, availableColors.Count)];
     }
 
     public void SwapGems(Gem currentGem, Vector2 direction)
