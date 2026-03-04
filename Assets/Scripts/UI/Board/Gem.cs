@@ -16,6 +16,11 @@ public class Gem : MonoBehaviour
     public GemColor color;
     public int xIndex;
     public int yIndex;
+    public bool isMatched = false;
+
+    [Header("Match Animation Settings")]
+    public float shakeAmount = 0.1f;    // Насколько сильно дрожит (амплитуда в координатах)
+    public float shakeDuration = 0.05f; // Скорость одного "рывка" в сторону
 
     // Ссылки
     private SpriteRenderer spriteRenderer;
@@ -24,7 +29,6 @@ public class Gem : MonoBehaviour
     // Свайп логика
     private Vector2 firstTouchPosition;
     private Vector2 finalTouchPosition;
-    private bool swipeResisted = false;
     public float swipeResist = 0.5f; // Минимальная длина свайпа
 
     public void Setup(GemColor newColor, Sprite newSprite, int x, int y, BoardManager boardManager)
@@ -43,6 +47,8 @@ public class Gem : MonoBehaviour
 
     private void OnMouseDown()
     {
+        if (isMatched) return;
+
         // Выводим данные о кристалле в консоль для проверки клика
         Debug.Log($"Клик по кристаллу: x = {xIndex}, y = {yIndex}, цвет = {color}");
 
@@ -52,6 +58,8 @@ public class Gem : MonoBehaviour
 
     private void OnMouseUp()
     {
+        if (isMatched) return;
+
         // Запоминаем позицию конца свайпа
         finalTouchPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         CalculateAngle();
@@ -89,5 +97,39 @@ public class Gem : MonoBehaviour
         {
             board.SwapGems(this, Vector2.down);
         }
+    }
+
+    private Vector3 matchPosition;
+
+    public void SetMatched()
+    {
+        if (isMatched) return;
+        isMatched = true;
+
+        // Отменяем любые другие анимации (например, если кристалл еще падал)
+        LeanTween.cancel(gameObject);
+
+        // Запоминаем центральную позицию для дрожания
+        matchPosition = transform.localPosition;
+    }
+
+    private void Update()
+    {
+        if (isMatched)
+        {
+            // Жесткая математическая синхронизация через единое время Time.time.
+            // Все кристаллы будут трястись абсолютно одинаково.
+            float shakePhase = Time.time * (Mathf.PI / shakeDuration);
+            transform.localPosition = new Vector3(
+                matchPosition.x + Mathf.Sin(shakePhase) * shakeAmount,
+                matchPosition.y,
+                matchPosition.z
+            );
+        }
+    }
+
+    private void OnDestroy()
+    {
+        LeanTween.cancel(gameObject);
     }
 }
