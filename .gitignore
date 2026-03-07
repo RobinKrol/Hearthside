@@ -1,0 +1,5 @@
+*.meta
+/Library
+/Assets/LeanTween/Examples
+/Temp
+/obj

@@ -19,6 +19,13 @@ public class BoardManager : MonoBehaviour
     [Header("Gem Graphics (5 Colors)")]
     public Sprite[] gemSprites;    // Перетащите сюда 5 спрайтов кристаллов
 
+    [Header("UI & Timer Visuals")]
+    public UnityEngine.UI.Image timerImage; // Ссылка на Image компонент часов
+    public Sprite[] timerSprites;  // Массив спрайтов часов (от полных до пустых)
+
+    [Header("Heroes Integration")]
+    public HeroManager heroManager; // Менеджер для распределения очков между героями
+
     [Header("Turn & Timer Logic")]
     public float turnDuration = 15f;
     public int turnCount = 0;
@@ -269,6 +276,8 @@ public class BoardManager : MonoBehaviour
         {
             currentTimer -= Time.deltaTime;
 
+            UpdateTimerUI();
+
             if (currentTimer <= 0)
             {
                 isTimerRunning = false;
@@ -276,6 +285,28 @@ public class BoardManager : MonoBehaviour
                 ResolveTurn();
             }
         }
+    }
+
+    private void UpdateTimerUI()
+    {
+        if (timerImage == null || timerSprites == null || timerSprites.Length == 0) return;
+
+        // Если время вышло окончательно, возвращаемся к первому спрайту (полным часам)
+        if (currentTimer <= 0)
+        {
+            timerImage.sprite = timerSprites[0];
+            return;
+        }
+
+        // Вычисляем процент оставшегося времени
+        float timePercent = currentTimer / turnDuration;
+
+        // Распределяем все доступные кадры равномерно на протяжении 15 секунд.
+        // Массив: 0 (полные) ... N-1 (пустые). 
+        // 1.0f - timePercent даст значение от 0 до почти 1.
+        int spriteIndex = Mathf.Clamp(Mathf.FloorToInt((1f - timePercent) * timerSprites.Length), 0, timerSprites.Length - 1);
+
+        timerImage.sprite = timerSprites[spriteIndex];
     }
 
     private bool FindAllMatches()
@@ -363,6 +394,12 @@ public class BoardManager : MonoBehaviour
         foreach (var kvp in scores)
         {
             Debug.Log($"Очки за цвет {kvp.Key}: {kvp.Value}");
+
+            // Передаем собранные кристаллы в менеджер героев для начисления энергии
+            if (heroManager != null)
+            {
+                heroManager.AddEnergyToColor(kvp.Key, kvp.Value);
+            }
         }
         if (scores.Count == 0)
         {
@@ -461,6 +498,12 @@ public class BoardManager : MonoBehaviour
 
         // Ждем дольше, чтобы все кристаллы успели допрыгать
         yield return new WaitForSeconds(swapDuration * 2.5f);
+
+        // Возвращаем таймер в полное состояние после заполнения поля
+        if (timerImage != null && timerSprites != null && timerSprites.Length > 0)
+        {
+            timerImage.sprite = timerSprites[0];
+        }
 
         isTurnActive = true;
     }
