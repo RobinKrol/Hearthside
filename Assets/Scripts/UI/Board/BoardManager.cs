@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 
 public class BoardManager : MonoBehaviour
 {
@@ -22,13 +23,18 @@ public class BoardManager : MonoBehaviour
     [Header("UI & Timer Visuals")]
     public UnityEngine.UI.Image timerImage; // Ссылка на Image компонент часов
     public Sprite[] timerSprites;  // Массив спрайтов часов (от полных до пустых)
+    public TextMeshProUGUI turnText; // Ссылка на Текст (TextMeshPro) для счетчика ходов
 
     [Header("Heroes Integration")]
     public HeroManager heroManager; // Менеджер для распределения очков между героями
 
+    [Header("Environment")]
+    public EnvironmentManager environmentManager;
+
     [Header("Turn & Timer Logic")]
     public float turnDuration = 15f;
-    public int turnCount = 0;
+    public int turnCount = 1;
+
     private float currentTimer;
     private bool isTimerRunning = false;
     private bool isTurnActive = true;
@@ -38,6 +44,7 @@ public class BoardManager : MonoBehaviour
     void Start()
     {
         GenerateBoard();
+        UpdateTurnUI();
     }
 
     public void ClearBoard()
@@ -187,13 +194,7 @@ public class BoardManager : MonoBehaviour
         // Проверяем, не заблокирован ли целевой кристалл
         if (targetGem == null || targetGem.isMatched) return;
 
-        // Запускаем таймер, если это первый свайп хода
-        if (!isTimerRunning && isTurnActive)
-        {
-            isTimerRunning = true;
-            currentTimer = turnDuration;
-            Debug.Log($"Таймер запущен на {turnDuration} секунд!");
-        }
+        bool isFirstComboAttempt = !isTimerRunning;
 
         // 1. Логический обмен в массиве
         allGems[currentGem.xIndex, currentGem.yIndex] = targetGem;
@@ -213,19 +214,28 @@ public class BoardManager : MonoBehaviour
         StartCoroutine(MoveGemVisual(currentGem, targetGem.transform.position));
         StartCoroutine(MoveGemVisual(targetGem, currentGem.transform.position));
 
-        StartCoroutine(CheckMatchesAfterSwap(currentGem, targetGem));
+        StartCoroutine(CheckMatchesAfterSwap(currentGem, targetGem, isFirstComboAttempt));
     }
 
-    private IEnumerator CheckMatchesAfterSwap(Gem gem1, Gem gem2)
+    private IEnumerator CheckMatchesAfterSwap(Gem gem1, Gem gem2, bool isFirstComboAttempt)
     {
         yield return new WaitForSeconds(swapDuration);
 
         bool hasMatches = FindAllMatches();
 
-        // Свайп, который не приводит к комбинации, завершает ход
-        if (!hasMatches && isTimerRunning)
+        if (hasMatches)
         {
-            Debug.Log("Нет комбинаций после свайпа! Возвращаем обратно и завершаем ход.");
+            // Если это первое собранное комбо за ход — официально стартуем таймер!
+            if (isFirstComboAttempt && !isTimerRunning && isTurnActive)
+            {
+                isTimerRunning = true;
+                currentTimer = turnDuration;
+                Debug.Log($"Первое комбо! Таймер запущен на {turnDuration} секунд!");
+            }
+        }
+        else
+        {
+            Debug.Log("Нет комбинаций после свайпа! Возвращаем обратно.");
 
             // Логический возврат
             int tempX = gem1.xIndex;
@@ -242,12 +252,8 @@ public class BoardManager : MonoBehaviour
             StartCoroutine(MoveGemVisual(gem1, gem2.transform.position));
             StartCoroutine(MoveGemVisual(gem2, gem1.transform.position));
 
-            // Ждем завершения анимации возврата
+            // Ждем завершения анимации возврата (штрафует игроков только потерей времени, если таймер уже шел)
             yield return new WaitForSeconds(swapDuration);
-
-            isTimerRunning = false;
-            isTurnActive = false;
-            ResolveTurn();
         }
     }
 
@@ -307,6 +313,19 @@ public class BoardManager : MonoBehaviour
         int spriteIndex = Mathf.Clamp(Mathf.FloorToInt((1f - timePercent) * timerSprites.Length), 0, timerSprites.Length - 1);
 
         timerImage.sprite = timerSprites[spriteIndex];
+    }
+
+    private void UpdateTurnUI()
+    {
+        if (turnText != null)
+        {
+            // Фиксированно 7 ходов. Ограничиваем, чтобы не ушло в 8 при game over
+            int maxTurns = 7;
+            int displayTurn = Mathf.Min(turnCount, maxTurns);
+
+            // Выводим просто число текущего хода, без " / 7"
+            turnText.text = displayTurn.ToString();
+        }
     }
 
     private bool FindAllMatches()
@@ -369,6 +388,8 @@ public class BoardManager : MonoBehaviour
     private void ResolveTurn()
     {
         turnCount++;
+        UpdateTurnUI(); // Обновляем текст на экране при смене хода
+
         Dictionary<Gem.GemColor, int> scores = new Dictionary<Gem.GemColor, int>();
 
         for (int x = 0; x < width; x++)
@@ -406,6 +427,11 @@ public class BoardManager : MonoBehaviour
             Debug.Log("Нет собранных комбинаций.");
         }
         Debug.Log("-------------------------");
+
+        if (environmentManager != null)
+        {
+            environmentManager.OnTurnCompleted();
+        }
 
         StartCoroutine(RefillBoard());
     }
@@ -505,6 +531,15 @@ public class BoardManager : MonoBehaviour
             timerImage.sprite = timerSprites[0];
         }
 
-        isTurnActive = true;
+        // Если игра закончилась, оставляем поле заблокированным
+        if (environmentManager != null && environmentManager.isGameOver)
+        {
+            Debug.Log("Игра окончена, ходы заблокированы.");
+            // isTurnActive остается false
+        }
+        else
+        {
+            isTurnActive = true;
+        }
     }
 }
