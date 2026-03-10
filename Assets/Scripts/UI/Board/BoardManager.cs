@@ -14,11 +14,19 @@ public class BoardManager : MonoBehaviour
     public float tileHeight = 1.0f; // расстояние между центрами по Y
     public float swapDuration = 0.25f; // Длительность анимации обмена
 
+    [System.Serializable]
+    public struct FruitData
+    {
+        public Gem.GemColor color;
+        public Sprite fruitSprite;
+    }
+
     [Header("References")]
     public GameObject gemPrefab;
 
     [Header("Gem Graphics (5 Colors)")]
     public Sprite[] gemSprites;    // Перетащите сюда 5 спрайтов кристаллов
+    public FruitData[] fruitTypes; // Настройка фруктов для каждого цвета
 
     [Header("UI & Timer Visuals")]
     public UnityEngine.UI.Image timerImage; // Ссылка на Image компонент часов
@@ -38,6 +46,7 @@ public class BoardManager : MonoBehaviour
     private float currentTimer;
     private bool isTimerRunning = false;
     private bool isTurnActive = true;
+    private bool isAnimating = false; // Блокировка ввода во время анимаций (корутин)
 
     private Gem[,] allGems;
 
@@ -113,8 +122,19 @@ public class BoardManager : MonoBehaviour
                     Gem.GemColor randomColor = (Gem.GemColor)randomColorIndex;
                     Sprite randomSprite = gemSprites[randomColorIndex];
 
+                    Sprite fruitSprite = null;
+                    // Ищем фрукт для этого цвета
+                    foreach (var fruitData in fruitTypes)
+                    {
+                        if (fruitData.color == randomColor)
+                        {
+                            fruitSprite = fruitData.fruitSprite;
+                            break;
+                        }
+                    }
+
                     // Настраиваем кристалл (передаем координаты x, y и ссылку на BoardManager)
-                    gem.Setup(randomColor, randomSprite, x, y, this);
+                    gem.Setup(randomColor, randomSprite, x, y, this, fruitSprite);
 
                     allGems[x, y] = gem;
                 }
@@ -178,7 +198,15 @@ public class BoardManager : MonoBehaviour
 
     public void SwapGems(Gem currentGem, Vector2 direction)
     {
-        if (!isTurnActive || currentGem.isMatched) return;
+        // Не разрешаем свайп, если ход заблокирован, кристалл уже собран, или идет анимация
+        if (!isTurnActive || currentGem.isMatched || isAnimating) return;
+
+        // Жесткая защита от свайпа в последнюю миллисекунду перед концом таймера (состояние гонки)
+        if (isTimerRunning && currentTimer <= 0.1f)
+        {
+            Debug.Log("Свайп отклонен: таймер почти истек!");
+            return;
+        }
 
         int targetX = currentGem.xIndex + (int)direction.x;
         int targetY = currentGem.yIndex + (int)direction.y;
@@ -210,6 +238,8 @@ public class BoardManager : MonoBehaviour
         targetGem.xIndex = tempX;
         targetGem.yIndex = tempY;
 
+        isAnimating = true; // Блокируем ввод на время анимации обмена
+
         // 2. Визуальный обмен (анимация через корутину)
         StartCoroutine(MoveGemVisual(currentGem, targetGem.transform.position));
         StartCoroutine(MoveGemVisual(targetGem, currentGem.transform.position));
@@ -232,6 +262,16 @@ public class BoardManager : MonoBehaviour
                 currentTimer = turnDuration;
                 Debug.Log($"Первое комбо! Таймер запущен на {turnDuration} секунд!");
             }
+            else if (isTimerRunning && isTurnActive)
+            {
+                // Если таймер уже идет, добавляем бонусную 1 секунду за комбо!
+                currentTimer += 1f;
+                // Не даем таймеру превысить изначальный максимум
+                currentTimer = Mathf.Clamp(currentTimer, 0f, turnDuration);
+                Debug.Log($"Комбо! +1 секунда. Текущее время: {currentTimer}");
+            }
+
+            isAnimating = false; // Разрешаем ввод, так как свап завершился комбоком (основной таймер идет)
         }
         else
         {
@@ -254,6 +294,8 @@ public class BoardManager : MonoBehaviour
 
             // Ждем завершения анимации возврата (штрафует игроков только потерей времени, если таймер уже шел)
             yield return new WaitForSeconds(swapDuration);
+
+            isAnimating = false; // Разрешаем ввод после возврата
         }
     }
 
@@ -287,7 +329,8 @@ public class BoardManager : MonoBehaviour
             if (currentTimer <= 0)
             {
                 isTimerRunning = false;
-                isTurnActive = false;
+                isTurnActive = false; // Жестко блокируем новые свайпы
+                isAnimating = true;   // Включаем статус анимации, чтобы ничего не двигалось в момент расчета
                 ResolveTurn();
             }
         }
@@ -390,7 +433,31 @@ public class BoardManager : MonoBehaviour
         turnCount++;
         UpdateTurnUI(); // Обновляем текст на экране при смене хода
 
+        // АВАРИЙНАЯ ОЧИСТКА:
+        // Если игрок сделал свайп в последнюю секунду и таймер истек раньше, чем FindAllMatches успел сработать,
+        // некоторые кристаллы могут навсегда "зависнуть" с флагом isMatched = true (хотя комбо на самом деле нет).
+        // Поэтому перед подсчетом мы прогоняем алгоритм поиска еще раз, чтобы точно подтвердить их статус,
+        // и снимаем блокировку со всех "ложных" совпадений.
+
+        // Сначала сбрасываем всем кристаллам флаг
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (allGems[x, y] != null)
+                {
+                    allGems[x, y].isMatched = false;
+                }
+            }
+        }
+
+        // Затем ищем реальные матчи (если они успели собраться в последний момент)
+        FindAllMatches();
+
         Dictionary<Gem.GemColor, int> scores = new Dictionary<Gem.GemColor, int>();
+
+        // Собираем данные для анимации фруктов, чтобы запустить их последовательно
+        List<FruitAnimationData> fruitsToAnimate = new List<FruitAnimationData>();
 
         for (int x = 0; x < width; x++)
         {
@@ -405,6 +472,33 @@ public class BoardManager : MonoBehaviour
                     }
                     scores[gem.color]++;
 
+                    // Проверяем, есть ли на кристалле фрукт для анимации
+                    if (gem.hasFruit && gem.fruitSprite != null && heroManager != null)
+                    {
+                        Vector3 targetPos = heroManager.GetHeroPosition(gem.color);
+                        if (targetPos != Vector3.zero) // Если герой этого цвета существует на сцене
+                        {
+                            // Сохраняем в список, чтобы потом запустить друг за другом
+                            fruitsToAnimate.Add(new FruitAnimationData
+                            {
+                                startPos = gem.transform.position,
+                                endPos = targetPos,
+                                heroColor = gem.color,
+                                fruitSprite = gem.fruitSprite
+                            });
+                        }
+                        else
+                        {
+                            // Если героя нет - просто начисляем очки без анимации
+                            heroManager.AddEnergyToColor(gem.color, 1);
+                        }
+                    }
+                    else if (heroManager != null)
+                    {
+                        // Если фрукта нет на кристалле, все равно даем базовую энергию за уничтожение кристалла
+                        heroManager.AddEnergyToColor(gem.color, 1);
+                    }
+
                     Destroy(gem.gameObject);
                     allGems[x, y] = null;
                 }
@@ -414,13 +508,7 @@ public class BoardManager : MonoBehaviour
         Debug.Log($"--- Завершен ход {turnCount} ---");
         foreach (var kvp in scores)
         {
-            Debug.Log($"Очки за цвет {kvp.Key}: {kvp.Value}");
-
-            // Передаем собранные кристаллы в менеджер героев для начисления энергии
-            if (heroManager != null)
-            {
-                heroManager.AddEnergyToColor(kvp.Key, kvp.Value);
-            }
+            Debug.Log($"Уничтожено кристаллов цвета {kvp.Key}: {kvp.Value}");
         }
         if (scores.Count == 0)
         {
@@ -433,7 +521,68 @@ public class BoardManager : MonoBehaviour
             environmentManager.OnTurnCompleted();
         }
 
+        // Запускаем последовательную анимацию фруктов, а досочку будем рефиллить параллельно
+        StartCoroutine(AnimateFruitsSequentially(fruitsToAnimate));
+
         StartCoroutine(RefillBoard());
+    }
+
+    private struct FruitAnimationData
+    {
+        public Vector3 startPos;
+        public Vector3 endPos;
+        public Gem.GemColor heroColor;
+        public Sprite fruitSprite;
+    }
+
+    private IEnumerator AnimateFruitsSequentially(List<FruitAnimationData> fruits)
+    {
+        float delayBetweenFruits = 0.15f; // Пауза между вылетом соседних фруктов
+
+        foreach (var fruitData in fruits)
+        {
+            // Запускаем фрукты один за другим с задержкой
+            StartCoroutine(AnimateFruitToHero(fruitData.startPos, fruitData.endPos, fruitData.heroColor, fruitData.fruitSprite));
+            yield return new WaitForSeconds(delayBetweenFruits);
+        }
+    }
+
+    private IEnumerator AnimateFruitToHero(Vector3 startPos, Vector3 endPos, Gem.GemColor heroColor, Sprite fruitSprite)
+    {
+        // 1. Создаем временный объект фрукта
+        GameObject flyingFruit = new GameObject("FlyingFruit");
+        flyingFruit.transform.position = startPos;
+        // Задаем сортировку поверх всех кристаллов
+        SpriteRenderer sr = flyingFruit.AddComponent<SpriteRenderer>();
+        sr.sprite = fruitSprite;
+        sr.sortingOrder = 100;
+
+        Vector3 originalFruitScale = flyingFruit.transform.localScale;
+
+        // 2. Анимируем полет к рамке героя
+        float flyDuration = 0.5f;
+        LeanTween.move(flyingFruit, endPos, flyDuration).setEaseInQuad();
+
+        yield return new WaitForSeconds(flyDuration);
+
+        // 3. Фрукт долетел -> Запускаем пульсацию и начисление
+        if (heroManager != null)
+        {
+            heroManager.AddEnergyToColor(heroColor, 1);
+        }
+
+        // Анимация пульсации: слегка увеличиваемся и исчезаем
+        float pulseDuration = 0.2f;
+        LeanTween.scale(flyingFruit, originalFruitScale * 1.3f, pulseDuration).setEaseOutBack();
+
+        yield return new WaitForSeconds(pulseDuration);
+
+        // Исчезновение (сжатие в 0)
+        LeanTween.scale(flyingFruit, Vector3.zero, 0.15f).setEaseInBack();
+
+        yield return new WaitForSeconds(0.15f);
+
+        Destroy(flyingFruit);
     }
 
     private IEnumerator RefillBoard()
@@ -503,12 +652,24 @@ public class BoardManager : MonoBehaviour
                     Gem gem = gemObject.GetComponent<Gem>();
                     if (gem != null)
                     {
-                        // Запрашиваем цвет, который гарантированно не создаст совпадений
                         int safeColorIndex = GetValidColorIndex(x, y);
                         Gem.GemColor randomColor = (Gem.GemColor)safeColorIndex;
                         Sprite randomSprite = gemSprites[safeColorIndex];
 
-                        gem.Setup(randomColor, randomSprite, x, y, this);
+                        Sprite fruitSprite = null;
+                        if (fruitTypes != null)
+                        {
+                            foreach (var fruitData in fruitTypes)
+                            {
+                                if (fruitData.color == randomColor)
+                                {
+                                    fruitSprite = fruitData.fruitSprite;
+                                    break;
+                                }
+                            }
+                        }
+
+                        gem.Setup(randomColor, randomSprite, x, y, this, fruitSprite);
                         allGems[x, y] = gem;
 
                         float dropDelay = Random.Range(0f, 0.2f) + (height - y) * 0.05f; // Задержка появления
@@ -540,6 +701,7 @@ public class BoardManager : MonoBehaviour
         else
         {
             isTurnActive = true;
+            isAnimating = false; // Снимаем блокировку после полного обновления доски
         }
     }
 }

@@ -22,7 +22,7 @@ public class HeroManager : MonoBehaviour
             if (hero.heroColor == color)
             {
                 hero.AddEnergy(totalEnergy);
-                
+
                 // Обновляем визуал интерфейса у героя
                 HeroUI ui = hero.GetComponent<HeroUI>();
                 if (ui != null)
@@ -33,5 +33,29 @@ public class HeroManager : MonoBehaviour
                 Debug.Log($"[HeroManager] Герой стихии {color} получил {totalEnergy} энергии! Теперь: {hero.currentEnergy} / {hero.maxEnergy}");
             }
         }
+    }
+
+    /// <summary>
+    /// Возвращает мировые координаты рамки UI нужного героя (для анимации полета фруктов).
+    /// Если герой не найден, возвращает нулевой вектор.
+    /// </summary>
+    public Vector3 GetHeroPosition(Gem.GemColor color)
+    {
+        foreach (Hero hero in activeHeroes)
+        {
+            if (hero.heroColor == color)
+            {
+                // Пытаемся получить точную целевую точку из UI компонента
+                HeroUI ui = hero.GetComponent<HeroUI>();
+                if (ui != null && ui.fruitTargetPoint != null)
+                {
+                    return ui.fruitTargetPoint.position;
+                }
+
+                // Запасной вариант - центр самого героя
+                return hero.transform.position;
+            }
+        }
+        return Vector3.zero;
     }
 }

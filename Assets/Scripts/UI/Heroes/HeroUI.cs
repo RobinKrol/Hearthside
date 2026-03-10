@@ -8,7 +8,8 @@ public class HeroUI : MonoBehaviour
 
     [Header("Настройки Рамки Энергии")]
     public Image frameImage;      // Ссылка на Image компонент UI
-    public Sprite[] frameSprites; // Массив из 5 спрайтов: [0] = почти пустая (или стартовая), ... [4] = полная (60/60)
+    public Sprite[] frameSprites; // Массив из 5 спрайтов
+    public Transform fruitTargetPoint; // Точка, куда будут лететь фрукты (например, gem_red_0)
 
     private void Awake()
     {
@@ -32,7 +33,7 @@ public class HeroUI : MonoBehaviour
         percent = Mathf.Clamp01(percent);
 
         int maxIndex = frameSprites.Length - 1;
-        
+
         // Расчет индекса рамки математически
         int index = Mathf.Clamp(Mathf.FloorToInt(percent * frameSprites.Length), 0, maxIndex);
 
@@ -41,7 +42,7 @@ public class HeroUI : MonoBehaviour
         {
             index = maxIndex;
         }
-        else if (index == maxIndex) 
+        else if (index == maxIndex)
         {
             // Если игрок почти накопил энергию (например 98%), показываем все равно предпоследний кадр
             index = maxIndex - 1;
