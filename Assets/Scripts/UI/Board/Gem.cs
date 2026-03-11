@@ -17,6 +17,7 @@ public class Gem : MonoBehaviour
     public int xIndex;
     public int yIndex;
     public bool isMatched = false;
+    public Sprite glowSprite; // Спрайт свечения для комбо
 
     [Header("Fruit Data")]
     public bool hasFruit = false;
@@ -36,12 +37,14 @@ public class Gem : MonoBehaviour
     private Vector2 finalTouchPosition;
     public float swipeResist = 0.5f; // Минимальная длина свайпа
 
-    public void Setup(GemColor newColor, Sprite newSprite, int x, int y, BoardManager boardManager, Sprite fruit)
+    public void Setup(GemColor newColor, Sprite newSprite, Sprite glow, int x, int y, BoardManager boardManager, Sprite fruit)
     {
         color = newColor;
         xIndex = x;
+        glowSprite = glow;
         yIndex = y;
         board = boardManager;
+        isMatched = false; // Сброс состояния для Object Pool
 
         spriteRenderer = GetComponent<SpriteRenderer>();
         if (spriteRenderer != null)
@@ -133,6 +136,11 @@ public class Gem : MonoBehaviour
     {
         if (isMatched) return;
         isMatched = true;
+
+        if (spriteRenderer != null && glowSprite != null)
+        {
+            spriteRenderer.sprite = glowSprite;
+        }
 
         // Отменяем любые другие анимации (например, если кристалл еще падал)
         LeanTween.cancel(gameObject);

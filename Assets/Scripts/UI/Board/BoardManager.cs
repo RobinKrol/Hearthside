@@ -21,17 +21,30 @@ public class BoardManager : MonoBehaviour
         public Sprite fruitSprite;
     }
 
+    [System.Serializable]
+    public struct GemVisualData
+    {
+        public Gem.GemColor color;
+        public Sprite defaultSprite;
+        public Sprite glowSprite;
+        public Color lineColor; // Цвет соединяющей линии для комбо
+    }
+
     [Header("References")]
     public GameObject gemPrefab;
 
     [Header("Gem Graphics (5 Colors)")]
-    public Sprite[] gemSprites;    // Перетащите сюда 5 спрайтов кристаллов
+    // Старый массив спрайтов больше не используется напрямую, данные берутся из gemVisuals
+    public GemVisualData[] gemVisuals;
     public FruitData[] fruitTypes; // Настройка фруктов для каждого цвета
 
-    [Header("UI & Timer Visuals")]
-    public UnityEngine.UI.Image timerImage; // Ссылка на Image компонент часов
-    public Sprite[] timerSprites;  // Массив спрайтов часов (от полных до пустых)
-    public TextMeshProUGUI turnText; // Ссылка на Текст (TextMeshPro) для счетчика ходов
+    [Header("Combo Lines")]
+    public Material lineMaterial; // Материал для линии (желательно Sprite-Default или Unlit)
+    public float lineWidth = 0.15f;
+    private List<GameObject> activeComboLines = new List<GameObject>(); // Список активных линий для удаления в конце хода
+
+    [Header("Game State Integration")]
+    public GameManager gameManager; // Менеджер состояния игры (счетчик ходов, таймер)
 
     [Header("Heroes Integration")]
     public HeroManager heroManager; // Менеджер для распределения очков между героями
@@ -39,29 +52,34 @@ public class BoardManager : MonoBehaviour
     [Header("Environment")]
     public EnvironmentManager environmentManager;
 
-    [Header("Turn & Timer Logic")]
-    public float turnDuration = 15f;
-    public int turnCount = 1;
-
-    private float currentTimer;
-    private bool isTimerRunning = false;
-    private bool isTurnActive = true;
     private bool isAnimating = false; // Блокировка ввода во время анимаций (корутин)
 
     private Gem[,] allGems;
 
+    // Object Pooling (Оптимизация)
+    private Queue<Gem> gemPool = new Queue<Gem>();
+    private Queue<GameObject> linePool = new Queue<GameObject>();
+
     void Start()
     {
         GenerateBoard();
-        UpdateTurnUI();
     }
 
     public void ClearBoard()
     {
-        // Удаляем все объекты-кристаллы (дети этого объекта)
-        foreach (Transform child in transform)
+        // Вместо удаления (Destroy) всех дочерних объектов, мы отключаем их и сортируем в пулы
+        if (allGems != null)
         {
-            Destroy(child.gameObject);
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    if (allGems[x, y] != null)
+                    {
+                        ReturnGem(allGems[x, y]);
+                    }
+                }
+            }
         }
 
         // Очищаем массив ссылок
@@ -88,7 +106,7 @@ public class BoardManager : MonoBehaviour
         }
 
         // Проверяем, что все ссылки назначены
-        if (gemPrefab == null || gemSprites.Length == 0)
+        if (gemPrefab == null || gemVisuals.Length == 0)
         {
             Debug.LogError("BoardManager: Не все ссылки назначены в инспекторе!");
             return;
@@ -108,19 +126,29 @@ public class BoardManager : MonoBehaviour
                 // Вычисляем позицию в мире (относительно этого BoardManager)
                 Vector3 spawnPosition = transform.position + new Vector3(x * tileWidth, y * tileHeight, 0) - offset;
 
-                // Создаем кристалл
-                GameObject gemObject = Instantiate(gemPrefab, spawnPosition, Quaternion.identity);
-                // Делаем BoardManager родителем для порядка в иерархии
-                gemObject.transform.SetParent(this.transform);
-                gemObject.name = $"Gem_{x}_{y}";
-
-                Gem gem = gemObject.GetComponent<Gem>();
+                // Получаем кристалл из пула (вместо Instantiate)
+                Gem gem = GetGem(spawnPosition);
+                
                 if (gem != null)
                 {
+                    gem.gameObject.name = $"Gem_{x}_{y}";
                     // Выбираем случайный цвет, избегая совпадений 3 в ряд
                     int randomColorIndex = GetValidColorIndex(x, y);
                     Gem.GemColor randomColor = (Gem.GemColor)randomColorIndex;
-                    Sprite randomSprite = gemSprites[randomColorIndex];
+
+                    // Получаем визуальные данные для этого цвета
+                    Sprite randomSprite = null;
+                    Sprite glowSprite = null;
+
+                    foreach (var visual in gemVisuals)
+                    {
+                        if (visual.color == randomColor)
+                        {
+                            randomSprite = visual.defaultSprite;
+                            glowSprite = visual.glowSprite;
+                            break;
+                        }
+                    }
 
                     Sprite fruitSprite = null;
                     // Ищем фрукт для этого цвета
@@ -134,7 +162,7 @@ public class BoardManager : MonoBehaviour
                     }
 
                     // Настраиваем кристалл (передаем координаты x, y и ссылку на BoardManager)
-                    gem.Setup(randomColor, randomSprite, x, y, this, fruitSprite);
+                    gem.Setup(randomColor, randomSprite, glowSprite, x, y, this, fruitSprite);
 
                     allGems[x, y] = gem;
                 }
@@ -149,9 +177,10 @@ public class BoardManager : MonoBehaviour
     private int GetValidColorIndex(int x, int y)
     {
         List<int> availableColors = new List<int>();
-        for (int i = 0; i < gemSprites.Length; i++)
+        // Перебираем все возможные цвета из перечисления, а не длину массива (чтобы 100% совпадало с enum)
+        foreach (int colorVal in System.Enum.GetValues(typeof(Gem.GemColor)))
         {
-            availableColors.Add(i);
+            availableColors.Add(colorVal);
         }
 
         // Проверяем все возможные пересечения для избежания случайных совпадений при падении
@@ -165,7 +194,7 @@ public class BoardManager : MonoBehaviour
 
         if (availableColors.Count == 0)
         {
-            return Random.Range(0, gemSprites.Length);
+            return Random.Range(0, System.Enum.GetValues(typeof(Gem.GemColor)).Length);
         }
 
         return availableColors[Random.Range(0, availableColors.Count)];
@@ -199,10 +228,10 @@ public class BoardManager : MonoBehaviour
     public void SwapGems(Gem currentGem, Vector2 direction)
     {
         // Не разрешаем свайп, если ход заблокирован, кристалл уже собран, или идет анимация
-        if (!isTurnActive || currentGem.isMatched || isAnimating) return;
+        if ((gameManager != null && !gameManager.IsTurnActive()) || currentGem.isMatched || isAnimating) return;
 
         // Жесткая защита от свайпа в последнюю миллисекунду перед концом таймера (состояние гонки)
-        if (isTimerRunning && currentTimer <= 0.1f)
+        if (gameManager != null && gameManager.IsTimerRunning() && gameManager.GetCurrentTimer() <= 0.1f)
         {
             Debug.Log("Свайп отклонен: таймер почти истек!");
             return;
@@ -222,7 +251,7 @@ public class BoardManager : MonoBehaviour
         // Проверяем, не заблокирован ли целевой кристалл
         if (targetGem == null || targetGem.isMatched) return;
 
-        bool isFirstComboAttempt = !isTimerRunning;
+
 
         // 1. Логический обмен в массиве
         allGems[currentGem.xIndex, currentGem.yIndex] = targetGem;
@@ -240,35 +269,24 @@ public class BoardManager : MonoBehaviour
 
         isAnimating = true; // Блокируем ввод на время анимации обмена
 
-        // 2. Визуальный обмен (анимация через корутину)
-        StartCoroutine(MoveGemVisual(currentGem, targetGem.transform.position));
-        StartCoroutine(MoveGemVisual(targetGem, currentGem.transform.position));
+        // 2. Визуальный обмен через LeanTween
+        LeanTween.move(currentGem.gameObject, targetGem.transform.position, swapDuration);
+        LeanTween.move(targetGem.gameObject, currentGem.transform.position, swapDuration);
 
-        StartCoroutine(CheckMatchesAfterSwap(currentGem, targetGem, isFirstComboAttempt));
+        StartCoroutine(CheckMatchesAfterSwap(currentGem, targetGem));
     }
 
-    private IEnumerator CheckMatchesAfterSwap(Gem gem1, Gem gem2, bool isFirstComboAttempt)
+    private IEnumerator CheckMatchesAfterSwap(Gem gem1, Gem gem2)
     {
         yield return new WaitForSeconds(swapDuration);
 
-        bool hasMatches = FindAllMatches();
+        bool hasMatches = FindMatchesAt(new List<Gem> { gem1, gem2 });
 
         if (hasMatches)
         {
-            // Если это первое собранное комбо за ход — официально стартуем таймер!
-            if (isFirstComboAttempt && !isTimerRunning && isTurnActive)
+            if (gameManager != null)
             {
-                isTimerRunning = true;
-                currentTimer = turnDuration;
-                Debug.Log($"Первое комбо! Таймер запущен на {turnDuration} секунд!");
-            }
-            else if (isTimerRunning && isTurnActive)
-            {
-                // Если таймер уже идет, добавляем бонусную 1 секунду за комбо!
-                currentTimer += 1f;
-                // Не даем таймеру превысить изначальный максимум
-                currentTimer = Mathf.Clamp(currentTimer, 0f, turnDuration);
-                Debug.Log($"Комбо! +1 секунда. Текущее время: {currentTimer}");
+                gameManager.OnFirstComboMatch();
             }
 
             isAnimating = false; // Разрешаем ввод, так как свап завершился комбоком (основной таймер идет)
@@ -288,9 +306,9 @@ public class BoardManager : MonoBehaviour
             allGems[gem1.xIndex, gem1.yIndex] = gem1;
             allGems[gem2.xIndex, gem2.yIndex] = gem2;
 
-            // Визуальный возврат
-            StartCoroutine(MoveGemVisual(gem1, gem2.transform.position));
-            StartCoroutine(MoveGemVisual(gem2, gem1.transform.position));
+            // Визуальный возврат через LeanTween
+            LeanTween.move(gem1.gameObject, gem2.transform.position, swapDuration);
+            LeanTween.move(gem2.gameObject, gem1.transform.position, swapDuration);
 
             // Ждем завершения анимации возврата (штрафует игроков только потерей времени, если таймер уже шел)
             yield return new WaitForSeconds(swapDuration);
@@ -299,128 +317,90 @@ public class BoardManager : MonoBehaviour
         }
     }
 
-    // Анимация обмена
 
-    private IEnumerator MoveGemVisual(Gem gem, Vector3 targetPosition)
+
+    public void OnTurnTimeUp()
     {
-        float elapsedTime = 0f;
-        Vector3 startingPosition = gem.transform.position;
-
-        while (elapsedTime < swapDuration)
-        {
-            // Плавная интерполяция
-            gem.transform.position = Vector3.Lerp(startingPosition, targetPosition, elapsedTime / swapDuration);
-            elapsedTime += Time.deltaTime;
-            yield return null; // Ждем следующий кадр
-        }
-
-        // Фиксируем конечную позицию точно
-        gem.transform.position = targetPosition;
-    }
-
-    private void Update()
-    {
-        if (isTimerRunning)
-        {
-            currentTimer -= Time.deltaTime;
-
-            UpdateTimerUI();
-
-            if (currentTimer <= 0)
-            {
-                isTimerRunning = false;
-                isTurnActive = false; // Жестко блокируем новые свайпы
-                isAnimating = true;   // Включаем статус анимации, чтобы ничего не двигалось в момент расчета
-                ResolveTurn();
-            }
-        }
-    }
-
-    private void UpdateTimerUI()
-    {
-        if (timerImage == null || timerSprites == null || timerSprites.Length == 0) return;
-
-        // Если время вышло окончательно, возвращаемся к первому спрайту (полным часам)
-        if (currentTimer <= 0)
-        {
-            timerImage.sprite = timerSprites[0];
-            return;
-        }
-
-        // Вычисляем процент оставшегося времени
-        float timePercent = currentTimer / turnDuration;
-
-        // Распределяем все доступные кадры равномерно на протяжении 15 секунд.
-        // Массив: 0 (полные) ... N-1 (пустые). 
-        // 1.0f - timePercent даст значение от 0 до почти 1.
-        int spriteIndex = Mathf.Clamp(Mathf.FloorToInt((1f - timePercent) * timerSprites.Length), 0, timerSprites.Length - 1);
-
-        timerImage.sprite = timerSprites[spriteIndex];
-    }
-
-    private void UpdateTurnUI()
-    {
-        if (turnText != null)
-        {
-            // Фиксированно 7 ходов. Ограничиваем, чтобы не ушло в 8 при game over
-            int maxTurns = 7;
-            int displayTurn = Mathf.Min(turnCount, maxTurns);
-
-            // Выводим просто число текущего хода, без " / 7"
-            turnText.text = displayTurn.ToString();
-        }
+        isAnimating = true;   // Включаем статус анимации, чтобы ничего не двигалось в момент расчета
+        ResolveTurn();
     }
 
     private bool FindAllMatches()
     {
-        bool foundNewMatch = false;
-
+        List<Gem> allGemsList = new List<Gem>();
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
-                Gem currentGem = allGems[x, y];
-                if (currentGem != null)
-                {
-                    // Горизонтальный поиск
-                    if (x > 0 && x < width - 1)
-                    {
-                        Gem leftGem = allGems[x - 1, y];
-                        Gem rightGem = allGems[x + 1, y];
-                        if (leftGem != null && rightGem != null)
-                        {
-                            if (leftGem.color == currentGem.color && rightGem.color == currentGem.color)
-                            {
-                                if (!leftGem.isMatched || !currentGem.isMatched || !rightGem.isMatched)
-                                {
-                                    leftGem.SetMatched();
-                                    currentGem.SetMatched();
-                                    rightGem.SetMatched();
-                                    foundNewMatch = true;
-                                }
-                            }
-                        }
-                    }
+                if (allGems[x, y] != null) allGemsList.Add(allGems[x, y]);
+            }
+        }
+        return FindMatchesAt(allGemsList);
+    }
 
-                    // Вертикальный поиск
-                    if (y > 0 && y < height - 1)
-                    {
-                        Gem downGem = allGems[x, y - 1];
-                        Gem upGem = allGems[x, y + 1];
-                        if (downGem != null && upGem != null)
-                        {
-                            if (downGem.color == currentGem.color && upGem.color == currentGem.color)
-                            {
-                                if (!downGem.isMatched || !currentGem.isMatched || !upGem.isMatched)
-                                {
-                                    downGem.SetMatched();
-                                    currentGem.SetMatched();
-                                    upGem.SetMatched();
-                                    foundNewMatch = true;
-                                }
-                            }
-                        }
-                    }
+    private bool FindMatchesAt(List<Gem> gemsToCheck)
+    {
+        bool foundNewMatch = false;
+
+        foreach (Gem gem in gemsToCheck)
+        {
+            if (gem == null) continue;
+            
+            int x = gem.xIndex;
+            int y = gem.yIndex;
+            Gem.GemColor color = gem.color;
+
+            // Горизонтальный поиск
+            List<Gem> horizGems = new List<Gem> { gem };
+            for (int i = x - 1; i >= 0; i--)
+            {
+                if (allGems[i, y] != null && allGems[i, y].color == color) horizGems.Add(allGems[i, y]);
+                else break;
+            }
+            for (int i = x + 1; i < width; i++)
+            {
+                if (allGems[i, y] != null && allGems[i, y].color == color) horizGems.Add(allGems[i, y]);
+                else break;
+            }
+
+            if (horizGems.Count >= 3)
+            {
+                horizGems.Sort((a, b) => a.xIndex.CompareTo(b.xIndex));
+                bool hasNew = false;
+                foreach (var g in horizGems) if (!g.isMatched) hasNew = true;
+
+                if (hasNew)
+                {
+                    foreach (var g in horizGems) g.SetMatched();
+                    DrawComboLine(horizGems, color);
+                    foundNewMatch = true;
+                }
+            }
+
+            // Вертикальный поиск
+            List<Gem> vertGems = new List<Gem> { gem };
+            for (int j = y - 1; j >= 0; j--)
+            {
+                if (allGems[x, j] != null && allGems[x, j].color == color) vertGems.Add(allGems[x, j]);
+                else break;
+            }
+            for (int j = y + 1; j < height; j++)
+            {
+                if (allGems[x, j] != null && allGems[x, j].color == color) vertGems.Add(allGems[x, j]);
+                else break;
+            }
+
+            if (vertGems.Count >= 3)
+            {
+                vertGems.Sort((a, b) => a.yIndex.CompareTo(b.yIndex));
+                bool hasNew = false;
+                foreach (var g in vertGems) if (!g.isMatched) hasNew = true;
+
+                if (hasNew)
+                {
+                    foreach (var g in vertGems) g.SetMatched();
+                    DrawComboLine(vertGems, color);
+                    foundNewMatch = true;
                 }
             }
         }
@@ -428,16 +408,79 @@ public class BoardManager : MonoBehaviour
         return foundNewMatch;
     }
 
+    private void DrawComboLine(List<Gem> matchedGems, Gem.GemColor color)
+    {
+        if (matchedGems.Count < 2) return;
+
+        // Ищем цвет линии в настройках
+        Color lineColor = Color.white;
+        foreach (var data in gemVisuals)
+        {
+            if (data.color == color)
+            {
+                lineColor = data.lineColor;
+                break;
+            }
+        }
+
+        // Берем объект линии из пула
+        GameObject lineObj = GetLine();
+
+        LineRenderer lr = lineObj.GetComponent<LineRenderer>();
+        lr.positionCount = matchedGems.Count;
+
+        // Настраиваем внешний вид линии
+        lr.startWidth = lineWidth;
+        lr.endWidth = lineWidth;
+        lr.material = lineMaterial;
+
+        // Настройка цветов (градиент)
+        lr.startColor = lineColor;
+        lr.endColor = lineColor;
+
+        // Округляем углы линии для красоты
+        lr.numCapVertices = 5;
+        lr.numCornerVertices = 5;
+        lr.sortingOrder = 0; // Отрисовка поверх заднего фона
+        lr.useWorldSpace = true;
+
+        // Задаем точки по центрам кристаллов, чуть сдвигая по Z, чтобы они были перед фоном
+        for (int i = 0; i < matchedGems.Count; i++)
+        {
+            Vector3 pos = matchedGems[i].transform.position;
+            pos.z = -0.5f; // Задники у нас на -1, а кристаллы на 0. Помещаем линию между ними.
+            lr.SetPosition(i, pos);
+        }
+
+        // Сохраняем линию, чтобы удалить её в конце хода
+        activeComboLines.Add(lineObj);
+    }
+
     private void ResolveTurn()
     {
-        turnCount++;
-        UpdateTurnUI(); // Обновляем текст на экране при смене хода
+        if (gameManager != null)
+        {
+            gameManager.CompleteTurn();
+        }
+
+        ResolveMatches();
+    }
+
+    private void ResolveMatches()
+    {
 
         // АВАРИЙНАЯ ОЧИСТКА:
         // Если игрок сделал свайп в последнюю секунду и таймер истек раньше, чем FindAllMatches успел сработать,
         // некоторые кристаллы могут навсегда "зависнуть" с флагом isMatched = true (хотя комбо на самом деле нет).
         // Поэтому перед подсчетом мы прогоняем алгоритм поиска еще раз, чтобы точно подтвердить их статус,
         // и снимаем блокировку со всех "ложных" совпадений.
+
+        // АВАРИЙНАЯ ОЧИСТКА ложных комбо и линий
+        foreach (var line in activeComboLines)
+        {
+            if (line != null) Destroy(line);
+        }
+        activeComboLines.Clear();
 
         // Сначала сбрасываем всем кристаллам флаг
         for (int x = 0; x < width; x++)
@@ -499,13 +542,20 @@ public class BoardManager : MonoBehaviour
                         heroManager.AddEnergyToColor(gem.color, 1);
                     }
 
-                    Destroy(gem.gameObject);
+                    // Уничтожаем (возвращаем в пул) связанные линии перед возвращением самого кристалла
+                    foreach (var line in activeComboLines)
+                    {
+                        if (line != null) ReturnLine(line);
+                    }
+                    activeComboLines.Clear();
+
+                    ReturnGem(gem);
                     allGems[x, y] = null;
                 }
             }
         }
 
-        Debug.Log($"--- Завершен ход {turnCount} ---");
+        Debug.Log($"--- Завершен ход ---");
         foreach (var kvp in scores)
         {
             Debug.Log($"Уничтожено кристаллов цвета {kvp.Key}: {kvp.Value}");
@@ -587,6 +637,8 @@ public class BoardManager : MonoBehaviour
 
     private IEnumerator RefillBoard()
     {
+        List<Gem> changedGems = new List<Gem>();
+
         // 1. Сдвигаем оставшиеся кристаллы вниз
         for (int x = 0; x < width; x++)
         {
@@ -618,6 +670,8 @@ public class BoardManager : MonoBehaviour
                                      .setDelay(dropDelay)
                                      .setEaseInOutSine(); // Мягкое опускание
 
+                            changedGems.Add(gemToMove);
+
                             break;
                         }
                     }
@@ -639,22 +693,34 @@ public class BoardManager : MonoBehaviour
                     // Точка появления (сразу на нужном месте)
                     Vector3 targetPos = transform.position + new Vector3(x * tileWidth, y * tileHeight, 0) - globalOffset;
 
-                    GameObject gemObject = Instantiate(gemPrefab, targetPos, Quaternion.identity);
-                    gemObject.transform.SetParent(this.transform);
-                    gemObject.name = $"Gem_{x}_{y}";
+                    // Берем кристалл из пула
+                    Gem gem = GetGem(targetPos);
+                    gem.gameObject.name = $"Gem_{x}_{y}";
 
-                    // Запоминаем изначальный размер префаба
-                    Vector3 originalScale = gemObject.transform.localScale;
+                    // Запоминаем изначальный размер из префаба, чтобы кристалл вырастал до правильного размера
+                    Vector3 originalScale = gemPrefab.transform.localScale;
 
                     // Устанавливаем размер в 0 для анимации появления (вырастания)
-                    gemObject.transform.localScale = Vector3.zero;
+                    gem.transform.localScale = Vector3.zero;
 
-                    Gem gem = gemObject.GetComponent<Gem>();
                     if (gem != null)
                     {
                         int safeColorIndex = GetValidColorIndex(x, y);
                         Gem.GemColor randomColor = (Gem.GemColor)safeColorIndex;
-                        Sprite randomSprite = gemSprites[safeColorIndex];
+
+                        // Получаем визуальные данные для этого цвета
+                        Sprite randomSprite = null;
+                        Sprite glowSprite = null;
+
+                        foreach (var visual in gemVisuals)
+                        {
+                            if (visual.color == randomColor)
+                            {
+                                randomSprite = visual.defaultSprite;
+                                glowSprite = visual.glowSprite;
+                                break;
+                            }
+                        }
 
                         Sprite fruitSprite = null;
                         if (fruitTypes != null)
@@ -669,15 +735,17 @@ public class BoardManager : MonoBehaviour
                             }
                         }
 
-                        gem.Setup(randomColor, randomSprite, x, y, this, fruitSprite);
+                        gem.Setup(randomColor, randomSprite, glowSprite, x, y, this, fruitSprite);
                         allGems[x, y] = gem;
 
                         float dropDelay = Random.Range(0f, 0.2f) + (height - y) * 0.05f; // Задержка появления
 
                         // Анимируем размер (вырастание) до исходного масштаба префаба
-                        LeanTween.scale(gemObject, originalScale, swapDuration * 1.5f)
+                        LeanTween.scale(gem.gameObject, originalScale, swapDuration * 1.5f)
                                  .setDelay(dropDelay)
                                  .setEaseOutBack(); // Плавное увеличение
+
+                        changedGems.Add(gem);
                     }
                 }
             }
@@ -686,22 +754,79 @@ public class BoardManager : MonoBehaviour
         // Ждем дольше, чтобы все кристаллы успели допрыгать
         yield return new WaitForSeconds(swapDuration * 2.5f);
 
-        // Возвращаем таймер в полное состояние после заполнения поля
-        if (timerImage != null && timerSprites != null && timerSprites.Length > 0)
+        // КАСКАД: Проверяем новые совпадения после падения
+        if (changedGems.Count > 0 && FindMatchesAt(changedGems))
         {
-            timerImage.sprite = timerSprites[0];
-        }
-
-        // Если игра закончилась, оставляем поле заблокированным
-        if (environmentManager != null && environmentManager.isGameOver)
-        {
-            Debug.Log("Игра окончена, ходы заблокированы.");
-            // isTurnActive остается false
+            // Нашлись новые комбо! Собираем их (рекурсивный каскад)
+            ResolveMatches();
         }
         else
         {
-            isTurnActive = true;
-            isAnimating = false; // Снимаем блокировку после полного обновления доски
+            // Если игра закончилась, оставляем поле заблокированным
+            if (environmentManager != null && environmentManager.isGameOver)
+            {
+                Debug.Log("Игра окончена, ходы заблокированы.");
+            }
+            else
+            {
+                if (gameManager != null)
+                {
+                    gameManager.UnlockTurn();
+                }
+                isAnimating = false; // Снимаем блокировку после полного обновления доски
+            }
         }
     }
+
+    #region Object Pooling
+
+    private Gem GetGem(Vector3 position)
+    {
+        if (gemPool.Count > 0)
+        {
+            Gem gem = gemPool.Dequeue();
+            gem.transform.position = position;
+            gem.gameObject.SetActive(true);
+            return gem;
+        }
+        else
+        {
+            GameObject gemObject = Instantiate(gemPrefab, position, Quaternion.identity);
+            gemObject.transform.SetParent(this.transform);
+            return gemObject.GetComponent<Gem>();
+        }
+    }
+
+    private void ReturnGem(Gem gem)
+    {
+        gem.gameObject.SetActive(false);
+        // Скидываем анимации LeanTween (чтобы они не доигрывались на выключенном объекте)
+        LeanTween.cancel(gem.gameObject);
+        gemPool.Enqueue(gem);
+    }
+
+    private GameObject GetLine()
+    {
+        if (linePool.Count > 0)
+        {
+            GameObject lineObj = linePool.Dequeue();
+            lineObj.SetActive(true);
+            return lineObj;
+        }
+        else
+        {
+            GameObject lineObj = new GameObject("ComboLine");
+            lineObj.transform.SetParent(this.transform);
+            lineObj.AddComponent<LineRenderer>();
+            return lineObj;
+        }
+    }
+
+    private void ReturnLine(GameObject lineObj)
+    {
+        lineObj.SetActive(false);
+        linePool.Enqueue(lineObj);
+    }
+
+    #endregion
 }
