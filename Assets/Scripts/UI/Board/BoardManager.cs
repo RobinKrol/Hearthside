@@ -38,6 +38,10 @@ public class BoardManager : MonoBehaviour
     public GemVisualData[] gemVisuals;
     public FruitData[] fruitTypes; // Настройка фруктов для каждого цвета
 
+    [Header("Level Settings")]
+    [Tooltip("Какие цвета кристаллов могут появляться на этом уровне? Если пусто — будут падать все возможные цвета.")]
+    public List<Gem.GemColor> allowedColors = new List<Gem.GemColor>();
+
     [Header("Combo Lines")]
     public Material lineMaterial; // Материал для линии (желательно Sprite-Default или Unlit)
     public float lineWidth = 0.15f;
@@ -59,6 +63,10 @@ public class BoardManager : MonoBehaviour
     // Object Pooling (Оптимизация)
     private Queue<Gem> gemPool = new Queue<Gem>();
     private Queue<GameObject> linePool = new Queue<GameObject>();
+
+    // Combo System
+    private int currentComboChain = 0; // Количество отдельных комбо (свайп + все каскады) за один ход
+    private Dictionary<Gem.GemColor, int> gemsCollectedThisTurn = new Dictionary<Gem.GemColor, int>();
 
     void Start()
     {
@@ -177,10 +185,22 @@ public class BoardManager : MonoBehaviour
     private int GetValidColorIndex(int x, int y)
     {
         List<int> availableColors = new List<int>();
-        // Перебираем все возможные цвета из перечисления, а не длину массива (чтобы 100% совпадало с enum)
-        foreach (int colorVal in System.Enum.GetValues(typeof(Gem.GemColor)))
+
+        // Если список разрешенных цветов пуст (не настроили в инспекторе), используем все возможные цвета
+        if (allowedColors == null || allowedColors.Count == 0)
         {
-            availableColors.Add(colorVal);
+            foreach (int colorVal in System.Enum.GetValues(typeof(Gem.GemColor)))
+            {
+                availableColors.Add(colorVal);
+            }
+        }
+        else
+        {
+            // Берем только разрешенные цвета
+            foreach (var allowedColor in allowedColors)
+            {
+                availableColors.Add((int)allowedColor);
+            }
         }
 
         // Проверяем все возможные пересечения для избежания случайных совпадений при падении
@@ -194,7 +214,15 @@ public class BoardManager : MonoBehaviour
 
         if (availableColors.Count == 0)
         {
-            return Random.Range(0, System.Enum.GetValues(typeof(Gem.GemColor)).Length);
+            // Если из-за рандома все цвета отсеялись, возвращаем любой случайный цвет из разрешенных
+            if (allowedColors != null && allowedColors.Count > 0)
+            {
+                return (int)allowedColors[Random.Range(0, allowedColors.Count)];
+            }
+            else
+            {
+                return Random.Range(0, System.Enum.GetValues(typeof(Gem.GemColor)).Length);
+            }
         }
 
         return availableColors[Random.Range(0, availableColors.Count)];
@@ -280,9 +308,9 @@ public class BoardManager : MonoBehaviour
     {
         yield return new WaitForSeconds(swapDuration);
 
-        bool hasMatches = FindMatchesAt(new List<Gem> { gem1, gem2 });
+        int matchesCount = FindMatchesAt(new List<Gem> { gem1, gem2 });
 
-        if (hasMatches)
+        if (matchesCount > 0)
         {
             if (gameManager != null)
             {
@@ -325,7 +353,7 @@ public class BoardManager : MonoBehaviour
         ResolveTurn();
     }
 
-    private bool FindAllMatches()
+    private int FindAllMatches()
     {
         List<Gem> allGemsList = new List<Gem>();
         for (int x = 0; x < width; x++)
@@ -338,9 +366,9 @@ public class BoardManager : MonoBehaviour
         return FindMatchesAt(allGemsList);
     }
 
-    private bool FindMatchesAt(List<Gem> gemsToCheck)
+    private int FindMatchesAt(List<Gem> gemsToCheck)
     {
-        bool foundNewMatch = false;
+        int totalNewCombosFound = 0;
 
         foreach (Gem gem in gemsToCheck)
         {
@@ -373,7 +401,7 @@ public class BoardManager : MonoBehaviour
                 {
                     foreach (var g in horizGems) g.SetMatched();
                     DrawComboLine(horizGems, color);
-                    foundNewMatch = true;
+                    totalNewCombosFound++;
                 }
             }
 
@@ -400,12 +428,12 @@ public class BoardManager : MonoBehaviour
                 {
                     foreach (var g in vertGems) g.SetMatched();
                     DrawComboLine(vertGems, color);
-                    foundNewMatch = true;
+                    totalNewCombosFound++;
                 }
             }
         }
 
-        return foundNewMatch;
+        return totalNewCombosFound;
     }
 
     private void DrawComboLine(List<Gem> matchedGems, Gem.GemColor color)
@@ -463,6 +491,8 @@ public class BoardManager : MonoBehaviour
             gameManager.CompleteTurn();
         }
 
+        currentComboChain = 0; // Сбрасываем счетчик комбо в начале хода
+        gemsCollectedThisTurn.Clear(); // Очищаем хранилище собранных кристаллов за этот ход
         ResolveMatches();
     }
 
@@ -495,7 +525,8 @@ public class BoardManager : MonoBehaviour
         }
 
         // Затем ищем реальные матчи (если они успели собраться в последний момент)
-        FindAllMatches();
+        int matchesFound = FindAllMatches();
+        currentComboChain += matchesFound;
 
         Dictionary<Gem.GemColor, int> scores = new Dictionary<Gem.GemColor, int>();
 
@@ -509,13 +540,22 @@ public class BoardManager : MonoBehaviour
                 Gem gem = allGems[x, y];
                 if (gem != null && gem.isMatched)
                 {
+
+                    // Учитываем собранный кристалл в глобальной статистике за ход
+                    if (!gemsCollectedThisTurn.ContainsKey(gem.color))
+                    {
+                        gemsCollectedThisTurn[gem.color] = 0;
+                    }
+                    gemsCollectedThisTurn[gem.color]++;
+
+                    // Учитываем текущий кристалл в локальной статистике (для логов по конкретному этапу)
                     if (!scores.ContainsKey(gem.color))
                     {
                         scores[gem.color] = 0;
                     }
                     scores[gem.color]++;
 
-                    // Проверяем, есть ли на кристалле фрукт для анимации
+                    // Только визуальная часть (полет фруктов), само начисление энергии будет в конце хода
                     if (gem.hasFruit && gem.fruitSprite != null && heroManager != null)
                     {
                         Vector3 targetPos = heroManager.GetHeroPosition(gem.color);
@@ -530,16 +570,6 @@ public class BoardManager : MonoBehaviour
                                 fruitSprite = gem.fruitSprite
                             });
                         }
-                        else
-                        {
-                            // Если героя нет - просто начисляем очки без анимации
-                            heroManager.AddEnergyToColor(gem.color, 1);
-                        }
-                    }
-                    else if (heroManager != null)
-                    {
-                        // Если фрукта нет на кристалле, все равно даем базовую энергию за уничтожение кристалла
-                        heroManager.AddEnergyToColor(gem.color, 1);
                     }
 
                     // Уничтожаем (возвращаем в пул) связанные линии перед возвращением самого кристалла
@@ -591,7 +621,7 @@ public class BoardManager : MonoBehaviour
 
         foreach (var fruitData in fruits)
         {
-            // Запускаем фрукты один за другим с задержкой
+            // Запускаем фрукты один за другим с задержкой (только визуально)
             StartCoroutine(AnimateFruitToHero(fruitData.startPos, fruitData.endPos, fruitData.heroColor, fruitData.fruitSprite));
             yield return new WaitForSeconds(delayBetweenFruits);
         }
@@ -615,11 +645,8 @@ public class BoardManager : MonoBehaviour
 
         yield return new WaitForSeconds(flyDuration);
 
-        // 3. Фрукт долетел -> Запускаем пульсацию и начисление
-        if (heroManager != null)
-        {
-            heroManager.AddEnergyToColor(heroColor, 1);
-        }
+        // 3. Фрукт долетел -> Запускаем пульсацию
+        // Начисление больше не здесь, оно применяется ко всему ходу целиком в конце
 
         // Анимация пульсации: слегка увеличиваемся и исчезаем
         float pulseDuration = 0.2f;
@@ -755,13 +782,20 @@ public class BoardManager : MonoBehaviour
         yield return new WaitForSeconds(swapDuration * 2.5f);
 
         // КАСКАД: Проверяем новые совпадения после падения
-        if (changedGems.Count > 0 && FindMatchesAt(changedGems))
+        int cascadeMatches = changedGems.Count > 0 ? FindMatchesAt(changedGems) : 0;
+        if (cascadeMatches > 0)
         {
             // Нашлись новые комбо! Собираем их (рекурсивный каскад)
+            currentComboChain += cascadeMatches;
+            Debug.Log($"[COMBO] Сработал каскад! Всего комбо в этом ходу: {currentComboChain}");
             ResolveMatches();
         }
         else
         {
+            // Каскады закончились, ход полностью завершен.
+            // Применяем математику комбо ко всем собранным за этот ход(включая каскады) кристаллам:
+            ApplyTurnEnergyToHeroes();
+
             // Если игра закончилась, оставляем поле заблокированным
             if (environmentManager != null && environmentManager.isGameOver)
             {
@@ -776,6 +810,28 @@ public class BoardManager : MonoBehaviour
                 isAnimating = false; // Снимаем блокировку после полного обновления доски
             }
         }
+    }
+
+    private void ApplyTurnEnergyToHeroes()
+    {
+        if (heroManager == null || gemsCollectedThisTurn.Count == 0) return;
+
+        // Коэффициент = 1 + (Количество отдельно собранных комбо * 0.05)
+        float comboMultiplier = 1f + (currentComboChain * 0.05f);
+
+        Debug.Log($"--- ИТОГИ ХОДА ---");
+        Debug.Log($"Всего комбо собрано: {currentComboChain}. Множитель: x{comboMultiplier}");
+
+        foreach (var kvp in gemsCollectedThisTurn)
+        {
+            Gem.GemColor color = kvp.Key;
+            int totalGemsOfColor = kvp.Value;
+
+            // Передаем в HeroManager общее количество собранных за этот длинный ход кристаллов этого цвета
+            heroManager.AddEnergyToColor(color, totalGemsOfColor, comboMultiplier);
+        }
+
+        Debug.Log("------------------");
     }
 
     #region Object Pooling

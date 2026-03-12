@@ -1,8 +1,9 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 [RequireComponent(typeof(Hero))]
-public class HeroUI : MonoBehaviour
+public class HeroUI : MonoBehaviour, IPointerClickHandler
 {
     private Hero heroData;
 
@@ -49,5 +50,26 @@ public class HeroUI : MonoBehaviour
         }
 
         frameImage.sprite = frameSprites[index];
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (heroData == null) return;
+
+        // Пытаемся потратить энергию (сработает только если 100%)
+        if (heroData.TryConsumeEnergy())
+        {
+            Debug.Log($"[HeroUI] Герой {heroData.heroColor} приготовил напиток!");
+            
+            // Обновляем шкалу, так как энергия скинулась в ноль
+            UpdateUI();
+
+            // Передаем сигнал в систему заказов
+            OrderManager.Instance?.TryFulfillOrder(heroData.heroColor, heroData.ultimateDrinkSprite);
+        }
+        else
+        {
+            Debug.Log($"[HeroUI] Герой {heroData.heroColor} еще не готов! Энергия: {heroData.currentEnergy}/{heroData.maxEnergy}");
+        }
     }
 }

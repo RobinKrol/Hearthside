@@ -19,7 +19,7 @@ public class HeroManager : MonoBehaviour
 
         foreach (Hero hero in activeHeroes)
         {
-            if (hero.heroColor == color)
+            if (hero != null && hero.heroColor == color)
             {
                 hero.AddEnergy(totalEnergy);
 
@@ -43,7 +43,7 @@ public class HeroManager : MonoBehaviour
     {
         foreach (Hero hero in activeHeroes)
         {
-            if (hero.heroColor == color)
+            if (hero != null && hero.heroColor == color)
             {
                 // Пытаемся получить точную целевую точку из UI компонента
                 HeroUI ui = hero.GetComponent<HeroUI>();

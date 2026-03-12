@@ -9,6 +9,9 @@ public class Hero : MonoBehaviour
     [Header("Текущее состояние")]
     public int currentEnergy = 0;  // Текущее количество накопленной энергии
 
+    [Header("Настройки Кафе (Ульта)")]
+    public Sprite ultimateDrinkSprite; // Спрайт напитка, который герой готовит при полной энергии
+
     /// <summary>
     /// Добавляет энергию герою и ограничивает её до максимального значения.
     /// Возвращает true, если герой заряжен на 100%.
@@ -23,5 +26,18 @@ public class Hero : MonoBehaviour
         }
 
         return currentEnergy >= maxEnergy;
+    }
+
+    /// <summary>
+    /// Проверяет, можно ли использовать ульту. Если да — тратит энергию и возвращает true.
+    /// </summary>
+    public bool TryConsumeEnergy()
+    {
+        if (currentEnergy >= maxEnergy)
+        {
+            currentEnergy = 0;
+            return true;
+        }
+        return false;
     }
 }
