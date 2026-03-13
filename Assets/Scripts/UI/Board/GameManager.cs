@@ -65,11 +65,12 @@ public class GameManager : MonoBehaviour
         }
         else if (isTimerRunning && isTurnActive)
         {
-            // Если таймер уже идет, добавляем бонусную 1 секунду за комбо!
-            currentTimer += 1f;
+            // За комбо добавляем 50% от оставшегося времени
+            float bonus = currentTimer * 0.5f;
+            currentTimer += bonus;
             // Не даем таймеру превысить изначальный максимум
             currentTimer = Mathf.Clamp(currentTimer, 0f, turnDuration);
-            Debug.Log($"Комбо! +1 секунда. Текущее время: {currentTimer}");
+            Debug.Log($"Комбо! +{bonus:F1}с (50% от остатка). Текущее время: {currentTimer:F1}");
         }
     }
 

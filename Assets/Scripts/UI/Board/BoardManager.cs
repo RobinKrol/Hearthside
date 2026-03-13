@@ -785,9 +785,13 @@ public class BoardManager : MonoBehaviour
         int cascadeMatches = changedGems.Count > 0 ? FindMatchesAt(changedGems) : 0;
         if (cascadeMatches > 0)
         {
-            // Нашлись новые комбо! Собираем их (рекурсивный каскад)
+            // Нашлись новые комбо! — даем игроку увидеть подсветку совпавших кристаллов
             currentComboChain += cascadeMatches;
             Debug.Log($"[COMBO] Сработал каскад! Всего комбо в этом ходу: {currentComboChain}");
+
+            // Короткая пауза, чтобы игрок заметил подсвеченные кристаллы (glow-спрайты)
+            yield return new WaitForSeconds(0.35f);
+
             ResolveMatches();
         }
         else

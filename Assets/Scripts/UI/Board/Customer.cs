@@ -15,6 +15,12 @@ public class Customer : MonoBehaviour
     public Gem.GemColor requestedColor; // Цвет напитка, который он ждет
 
     private Action onOrderCompleted;
+    private CanvasGroup canvasGroup;
+
+    /// <summary>
+    /// True, если посетителя уже обслуживают (напиток подан и он уходит).
+    /// </summary>
+    public bool IsBeingServed { get; private set; } = false;
 
     public void Setup(Gem.GemColor color, Sprite baseSprite, Sprite joyfulSprite, Action completionCallback)
     {
@@ -22,6 +28,12 @@ public class Customer : MonoBehaviour
         defaultSprite = baseSprite;
         happySprite = joyfulSprite;
         onOrderCompleted = completionCallback;
+
+        // Получаем или добавляем CanvasGroup для управления прозрачностью
+        canvasGroup = GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        canvasGroup.alpha = 1f;
 
         if (portraitImage != null)
         {
@@ -46,6 +58,8 @@ public class Customer : MonoBehaviour
     /// </summary>
     public void ServeDrink(Sprite drinkSprite)
     {
+        if (IsBeingServed) return; // Защита от повторного вызова
+        IsBeingServed = true;
         StartCoroutine(ServeDrinkCoroutine(drinkSprite));
     }
 
@@ -78,10 +92,19 @@ public class Customer : MonoBehaviour
         // Ждем еще немного
         yield return new WaitForSeconds(1.0f);
 
-        // 3. Анимация исчезновения (уменьшение и прозрачность)
-        LeanTween.scale(gameObject, Vector3.zero, 0.4f).setEaseInBack();
-        
-        yield return new WaitForSeconds(0.4f);
+        // 3. Анимация исчезновения — "сдувается": уменьшается на 10% и растворяется
+        Vector3 currentScale = transform.localScale;
+        LeanTween.scale(gameObject, currentScale * 0.9f, 0.15f).setEaseOutQuad();
+
+        yield return new WaitForSeconds(0.15f);
+
+        // После "надувания" — растворяемся
+        if (canvasGroup != null)
+        {
+            LeanTween.alphaCanvas(canvasGroup, 0f, 0.25f).setEaseInQuad();
+        }
+
+        yield return new WaitForSeconds(0.3f);
 
         // 4. Оповещаем менеджера, что место свободно
         onOrderCompleted?.Invoke();
