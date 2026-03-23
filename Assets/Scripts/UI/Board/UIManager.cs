@@ -4,9 +4,15 @@ using TMPro;
 
 public class UIManager : MonoBehaviour
 {
-    [Header("UI & Timer Visuals")]
-    public Image timerImage; // Ссылка на Image компонент часов
-    public Sprite[] timerSprites;  // Массив спрайтов часов (от полных до пустых)
+    [Header("Timer Bar Visuals")]
+    public Image timerBarFull;           // Спрайт полоски (Настроить: Image Type = Filled, Fill Method = Horizontal)
+    public RectTransform timerStar;      // Спрайт звёздочки-ползунка
+    
+    [Header("Позиция звёздочки (по оси X)")]
+    public float starPositionFull = 100f;  // Позиция X звёздочки, когда время 100%
+    public float starPositionEmpty = -100f;// Позиция X звёздочки, когда время 0%
+
+    [Header("Текст ходов")]
     public TextMeshProUGUI turnText; // Ссылка на Текст (TextMeshPro) для счетчика ходов
 
     /// <summary>
@@ -26,27 +32,21 @@ public class UIManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Обновляет визуальное отображение часов в зависимости от оставшегося времени
+    /// Обновляет визуальное отображение часов (timer_bar_full) и позицию звёздочки
     /// </summary>
     public void UpdateTimerUI(float currentTimer, float maxTurnDuration)
     {
-        if (timerImage == null || timerSprites == null || timerSprites.Length == 0) return;
+        if (timerBarFull == null || timerStar == null) return;
 
-        // Если время вышло окончательно, возвращаемся к первому спрайту (полным часам)
-        if (currentTimer <= 0)
-        {
-            timerImage.sprite = timerSprites[0];
-            return;
-        }
+        // Вычисляем процент оставшегося времени (от 0 до 1)
+        float timePercent = Mathf.Clamp01(currentTimer / maxTurnDuration);
 
-        // Вычисляем процент оставшегося времени
-        float timePercent = currentTimer / maxTurnDuration;
+        // 1. Уменьшаем полоску таймера
+        timerBarFull.fillAmount = timePercent;
 
-        // Распределяем все доступные кадры равномерно на протяжении 15 секунд.
-        // Массив: 0 (полные) ... N-1 (пустые). 
-        // 1.0f - timePercent даст значение от 0 до почти 1.
-        int spriteIndex = Mathf.Clamp(Mathf.FloorToInt((1f - timePercent) * timerSprites.Length), 0, timerSprites.Length - 1);
-
-        timerImage.sprite = timerSprites[spriteIndex];
+        // 2. Плавно двигаем звёздочку от пустой позиции к полной в зависимости от %
+        Vector2 starPos = timerStar.anchoredPosition;
+        starPos.x = Mathf.Lerp(starPositionEmpty, starPositionFull, timePercent);
+        timerStar.anchoredPosition = starPos;
     }
 }

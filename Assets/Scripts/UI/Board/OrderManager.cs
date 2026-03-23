@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Enums;
 
 public class OrderManager : MonoBehaviour
 {
@@ -33,7 +34,8 @@ public class OrderManager : MonoBehaviour
     public struct DrinkIcon
     {
         public Gem.GemColor color;
-        public Sprite icon;          // Иконка напитка этого цвета для чат-бабла
+        public DrinkSize size;
+        public Sprite icon;          // Иконка напитка этого цвета и размера для чат-бабла
     }
 
     [Header("Иконки напитков (для пузыря заказа)")]
@@ -41,6 +43,9 @@ public class OrderManager : MonoBehaviour
 
     // ─── Внутреннее состояние ───────────────────────────────
     private List<Customer> activeCustomers = new List<Customer>();
+    
+    // Счетчик отданных напитков (Цвет, Размер) -> Количество
+    private Dictionary<(Gem.GemColor, DrinkSize), int> fulfilledDrinks = new Dictionary<(Gem.GemColor, DrinkSize), int>();
 
     private void Awake()
     {
@@ -60,12 +65,12 @@ public class OrderManager : MonoBehaviour
     /// Вызывается из HeroUI при клике на героя с заряженной ультой.
     /// Ищет подходящего посетителя среди всех активных.
     /// </summary>
-    public void TryFulfillOrder(Gem.GemColor heroColor, Sprite ultimateDrink)
+    public void TryFulfillOrder(Gem.GemColor heroColor, DrinkSize heroDrinkSize, Sprite ultimateDrink)
     {
         Customer matching = null;
         foreach (Customer c in activeCustomers)
         {
-            if (c != null && c.requestedColor == heroColor && !c.IsBeingServed)
+            if (c != null && c.requestedColor == heroColor && c.requestedSize == heroDrinkSize && !c.IsBeingServed)
             {
                 matching = c;
                 break;
@@ -82,10 +87,23 @@ public class OrderManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"[OrderManager] Успех! {heroColor} напиток подан.");
+        Debug.Log($"[OrderManager] Успех! {heroColor} {heroDrinkSize} напиток подан.");
         matching.ServeDrink(ultimateDrink);
 
+        // Обновляем счетчик для текущего уровня
+        var key = (heroColor, heroDrinkSize);
+        if (!fulfilledDrinks.ContainsKey(key)) fulfilledDrinks[key] = 0;
+        fulfilledDrinks[key]++;
+
         SaveManager.Instance?.RecordOrderFulfilled();
+    }
+
+    /// <summary>
+    /// Возвращает количество отданных напитков заданного типа (для Award Screen)
+    /// </summary>
+    public int GetFulfilledCount(Gem.GemColor color, DrinkSize size)
+    {
+        return fulfilledDrinks.TryGetValue((color, size), out int count) ? count : 0;
     }
 
     /// <summary>
@@ -125,14 +143,14 @@ public class OrderManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Возвращает иконку напитка для бабла по цвету.
+    /// Возвращает иконку напитка для бабла по цвету и размеру.
     /// </summary>
-    private Sprite GetDrinkIcon(Gem.GemColor color)
+    private Sprite GetDrinkIcon(Gem.GemColor color, DrinkSize size)
     {
         if (drinkIcons == null) return null;
         foreach (var di in drinkIcons)
         {
-            if (di.color == color) return di.icon;
+            if (di.color == color && di.size == size) return di.icon;
         }
         return null;
     }
@@ -171,11 +189,11 @@ public class OrderManager : MonoBehaviour
         // Выбираем случайную внешность из пула
         CustomerVisuals visuals = GetRandomCustomerVisuals();
 
-        // Выбираем цвет заказа из активных героев
-        Gem.GemColor randomOrder = PickRandomOrderColor();
+        // Выбираем заказ (цвет и размер) из активных героев
+        PickRandomOrder(out Gem.GemColor randomOrderColor, out DrinkSize randomOrderSize);
 
         // Находим иконку для бабла
-        Sprite orderIcon = GetDrinkIcon(randomOrder);
+        Sprite orderIcon = GetDrinkIcon(randomOrderColor, randomOrderSize);
 
         // Создаём посетителя
         GameObject newObj = Instantiate(customerPrefab, spawnPoint);
@@ -183,21 +201,28 @@ public class OrderManager : MonoBehaviour
 
         if (newCustomer != null)
         {
-            newCustomer.Setup(randomOrder, visuals.defaultFace, visuals.happyFace,
+            newCustomer.Setup(randomOrderColor, randomOrderSize, visuals.defaultFace, visuals.happyFace,
                               orderIcon, () => OnCustomerLeft(newCustomer));
             activeCustomers.Add(newCustomer);
-            Debug.Log($"[OrderManager] Посетитель {activeCustomers.Count}/{maxCustomers} хочет: {randomOrder}");
+            Debug.Log($"[OrderManager] Посетитель {activeCustomers.Count}/{maxCustomers} хочет: {randomOrderColor} {randomOrderSize}");
         }
     }
 
-    private Gem.GemColor PickRandomOrderColor()
+    private void PickRandomOrder(out Gem.GemColor color, out DrinkSize size)
     {
         if (heroManager != null && heroManager.activeHeroes.Count > 0)
         {
             var validHeroes = heroManager.activeHeroes.FindAll(h => h != null);
             if (validHeroes.Count > 0)
-                return validHeroes[Random.Range(0, validHeroes.Count)].heroColor;
+            {
+                Hero randomHero = validHeroes[Random.Range(0, validHeroes.Count)];
+                color = randomHero.heroColor;
+                size = randomHero.drinkSize;
+                return;
+            }
         }
-        return (Gem.GemColor)Random.Range(0, System.Enum.GetValues(typeof(Gem.GemColor)).Length);
+        
+        color = (Gem.GemColor)Random.Range(0, System.Enum.GetValues(typeof(Gem.GemColor)).Length);
+        size = DrinkSize.Small;
     }
 }

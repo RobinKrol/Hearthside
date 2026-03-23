@@ -102,7 +102,7 @@ public class HeroUI : MonoBehaviour, IPointerClickHandler
             UpdateUI();
 
             // Передаем сигнал в систему заказов
-            OrderManager.Instance?.TryFulfillOrder(heroData.heroColor, heroData.ultimateDrinkSprite);
+            OrderManager.Instance?.TryFulfillOrder(heroData.heroColor, heroData.drinkSize, heroData.ultimateDrinkSprite);
         }
         else
         {

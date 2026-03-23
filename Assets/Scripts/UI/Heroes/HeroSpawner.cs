@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Enums;
 
 public class HeroSpawner : MonoBehaviour
 {
@@ -24,10 +25,10 @@ public class HeroSpawner : MonoBehaviour
     public struct HeroConfig
     {
         public Gem.GemColor color;          // Цвет кристаллов, которые заряжают этого героя
+        public DrinkSize drinkSize;         // Размер напитка, который он готовит
         public int maxEnergy;               // Максимальная энергия (сложность зарядки)
         public Sprite ultimateDrinkSprite;  // Напиток, который герой готовит при ульте
     }
-
 
     private void Start()
     {
@@ -73,21 +74,22 @@ public class HeroSpawner : MonoBehaviour
                 heroObj.transform.localPosition = new Vector3(posX, spawnY, 0f);
             }
 
-            // Настраиваем компонент Hero
-            Hero hero = heroObj.GetComponent<Hero>();
-            if (hero != null)
+            // Настраиваем героя
+            Hero heroComponent = heroObj.GetComponent<Hero>();
+            if (heroComponent != null)
             {
-                hero.heroColor = config.color;
-                hero.maxEnergy = config.maxEnergy;
-                hero.ultimateDrinkSprite = config.ultimateDrinkSprite;
+                heroComponent.heroColor = config.color;
+                heroComponent.drinkSize = config.drinkSize;
+                heroComponent.maxEnergy = config.maxEnergy;
+                heroComponent.ultimateDrinkSprite = config.ultimateDrinkSprite;
+                heroComponent.currentEnergy = 0;
 
                 // Добавляем в HeroManager
                 if (heroManager != null)
                 {
-                    heroManager.activeHeroes.Add(hero);
+                    heroManager.activeHeroes.Add(heroComponent);
                 }
             }
-
 
 
 

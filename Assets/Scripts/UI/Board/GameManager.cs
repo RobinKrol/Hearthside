@@ -9,6 +9,7 @@ public class GameManager : MonoBehaviour
     [Header("References")]
     public UIManager uiManager;
     public BoardManager boardManager;
+   
 
     private float currentTimer;
     private bool isTimerRunning = false;
@@ -16,9 +17,11 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
+        currentTimer = turnDuration;
         if (uiManager != null)
         {
             uiManager.UpdateTurnUI(turnCount);
+            uiManager.UpdateTimerUI(currentTimer, turnDuration); // Сразу показываем полный таймер
         }
     }
 
@@ -27,7 +30,7 @@ public class GameManager : MonoBehaviour
         if (isTimerRunning)
         {
             currentTimer -= Time.deltaTime;
-
+            Debug.Log(currentTimer);
             if (uiManager != null)
             {
                 uiManager.UpdateTimerUI(currentTimer, turnDuration);
@@ -37,6 +40,8 @@ public class GameManager : MonoBehaviour
             {
                 OnTimeUp();
             }
+
+            
         }
     }
 
@@ -98,5 +103,11 @@ public class GameManager : MonoBehaviour
     public void UnlockTurn()
     {
         isTurnActive = true;
+        currentTimer = turnDuration; // Готовим таймер для следующего хода
+        
+        if (uiManager != null)
+        {
+            uiManager.UpdateTimerUI(currentTimer, turnDuration); // Визуально возвращаем таймер на 100%
+        }
     }
 }

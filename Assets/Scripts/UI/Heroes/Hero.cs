@@ -1,9 +1,11 @@
 using UnityEngine;
+using Enums;
 
 public class Hero : MonoBehaviour
 {
     [Header("Настройки Героя")]
     public Gem.GemColor heroColor; // Цвет стихии героя, с которым он связан
+    public Enums.DrinkSize drinkSize; // Размер напитка, который он готовит
     public int maxEnergy = 60;     // Максимальный запас энергии для полного бара
 
     [Header("Текущее состояние")]

@@ -2,6 +2,7 @@ using System.Collections;
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using Enums;
 
 public class Customer : MonoBehaviour
 {
@@ -17,6 +18,7 @@ public class Customer : MonoBehaviour
 
     [Header("Состояние")]
     public Gem.GemColor requestedColor;   // Цвет напитка, который он ждёт
+    public DrinkSize requestedSize;       // Размер напитка
     public bool IsBeingServed { get; private set; } = false;
 
     // Приватные данные
@@ -28,14 +30,16 @@ public class Customer : MonoBehaviour
     /// Настраивает посетителя перед появлением на сцене.
     /// </summary>
     /// <param name="color">Запрашиваемый цвет напитка</param>
+    /// <param name="size">Запрашиваемый размер напитка</param>
     /// <param name="defaultFace">Обычное лицо</param>
     /// <param name="happyFace">Довольное лицо (после получения заказа)</param>
     /// <param name="orderIcon">Иконка заказа для чат-бабла</param>
     /// <param name="completionCallback">Вызывается когда посетитель ушёл</param>
-    public void Setup(Gem.GemColor color, Sprite defaultFace, Sprite happyFace,
+    public void Setup(Gem.GemColor color, DrinkSize size, Sprite defaultFace, Sprite happyFace,
                       Sprite orderIcon, Action completionCallback)
     {
         requestedColor = color;
+        requestedSize = size;
         happySprite = happyFace;
         onOrderCompleted = completionCallback;
 
