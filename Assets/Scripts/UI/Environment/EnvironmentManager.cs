@@ -27,6 +27,16 @@ public class EnvironmentManager : MonoBehaviour
 
     private void Start()
     {
+        // Подтягиваем длительности из LevelConfig, если он установлен в GameManager
+        if (GameManager.Instance != null && GameManager.Instance.currentLevel != null && stages != null && stages.Length >= 3)
+        {
+            var config = GameManager.Instance.currentLevel;
+            stages[0].turnsDuration = config.turnsMorning;
+            stages[1].turnsDuration = config.turnsDay;
+            stages[2].turnsDuration = config.turnsEvening;
+            // Ночь (stages[3] и тд) по сути не ограничена, игра уже заканчивается
+        }
+
         // Инициализируем стартовый фон (Утро), если стадии настроены
         if (stages != null && stages.Length > 0 && mainBackgroundRenderer != null)
         {

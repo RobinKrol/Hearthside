@@ -103,6 +103,9 @@ public class HeroUI : MonoBehaviour, IPointerClickHandler
 
             // Передаем сигнал в систему заказов
             OrderManager.Instance?.TryFulfillOrder(heroData.heroColor, heroData.drinkSize, heroData.ultimateDrinkSprite);
+
+            // Если сейчас наступила ночь, проверяем, не пора ли завершать игру
+            GameManager.Instance?.CheckEndGameCondition();
         }
         else
         {

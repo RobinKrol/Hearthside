@@ -2,6 +2,14 @@ using UnityEngine;
 using System.Collections.Generic;
 using Enums;
 
+[System.Serializable]
+public class RewardItemConfig
+{
+    public string itemName;
+    public Sprite itemSprite;
+    public int itemCount;
+}
+
 [CreateAssetMenu(fileName = "New LevelConfig", menuName = "Hearthside/Level Config")]
 public class LevelConfig : ScriptableObject
 {
@@ -25,6 +33,9 @@ public class LevelConfig : ScriptableObject
     public int rewardGold = 50;
     public int rewardXP = 30;
     public int rewardKeys = 1;
+
+    [Header("Item Rewards (Дополнительные предметы)")]
+    public List<RewardItemConfig> rewardItems;
 
     [Header("Stages (Тайминг & Ходы)")]
     public int turnsMorning = 3;

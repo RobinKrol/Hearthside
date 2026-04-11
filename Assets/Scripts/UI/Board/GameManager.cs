@@ -2,6 +2,13 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
+    public static GameManager Instance { get; private set; }
+
+    [Header("Level Config & Flow")]
+    public LevelConfig currentLevel;     // Настройки текущего уровня
+    public AwardUIManager awardUI;       // Ссылка на экран наград
+    public HeroManager heroManager;      // Ссылка на менеджер героев
+    
     [Header("Turn & Timer Logic")]
     public float turnDuration = 15f;
     public int turnCount = 1;
@@ -14,13 +21,27 @@ public class GameManager : MonoBehaviour
     private float currentTimer;
     private bool isTimerRunning = false;
     private bool isTurnActive = true;
+    private bool isNight = false; // Наступила ли ночь (конец всех ходов)
+
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
 
     private void Start()
     {
+        // Подхватываем настройки уровня, если задан
+        if (currentLevel != null)
+        {
+            turnDuration = currentLevel.turnDurationSeconds;
+        }
+
         currentTimer = turnDuration;
         if (uiManager != null)
         {
-            uiManager.UpdateTurnUI(turnCount);
+            int maxTurns = currentLevel != null ? currentLevel.TotalTurns : 7;
+            uiManager.UpdateTurnUI(turnCount, maxTurns);
             uiManager.UpdateTimerUI(currentTimer, turnDuration); // Сразу показываем полный таймер
         }
     }
@@ -94,14 +115,65 @@ public class GameManager : MonoBehaviour
     {
         turnCount++;
         
+        int maxTurns = currentLevel != null ? currentLevel.TotalTurns : 7;
+        
         if (uiManager != null)
         {
-            uiManager.UpdateTurnUI(turnCount);
+            uiManager.UpdateTurnUI(turnCount, maxTurns);
         }
+
+        // Если превышен лимит ходов — наступает ночь
+        if (turnCount > maxTurns)
+        {
+            TriggerNightPhase();
+        }
+    }
+
+    private void TriggerNightPhase()
+    {
+        Debug.Log("[GameManager] Наступила ночь! Ходы окончены.");
+        isNight = true;
+        isTurnActive = false; // Блокируем новые обычные свайпы
+
+        CheckEndGameCondition();
+    }
+
+    /// <summary>
+    /// Проверяет, можно ли закончить игру и показать окно наград.
+    /// Должна вызываться при наступлении ночи и после каждой использованной ульты.
+    /// </summary>
+    public void CheckEndGameCondition()
+    {
+        if (!isNight) return;
+
+        bool hasUltimate = heroManager != null && heroManager.HasAnyUltimateReady();
+
+        if (!hasUltimate)
+        {
+            ShowAwardScreen();
+        }
+        else
+        {
+            Debug.Log("[GameManager] Ночь наступила, но у героев есть ульта! Ждём...");
+        }
+    }
+
+    private void ShowAwardScreen()
+    {
+        if (awardUI == null || currentLevel == null) return;
+
+        // Проверяем победу по заказам
+        int fulfilled = OrderManager.Instance != null ? OrderManager.Instance.GetFulfilledCount(currentLevel.targetDrinkColor, currentLevel.targetDrinkSize) : 0;
+        bool isWin = fulfilled >= currentLevel.targetDrinksCount;
+
+        Debug.Log($"[GameManager] Конец игры. Цель: {currentLevel.targetDrinksCount}, Сделано: {fulfilled}. Победа: {isWin}");
+        awardUI.ShowAward(currentLevel, isWin);
     }
 
     public void UnlockTurn()
     {
+        if (isNight) return; // Во время ночи ходы не разблокируются
+
         isTurnActive = true;
         currentTimer = turnDuration; // Готовим таймер для следующего хода
         

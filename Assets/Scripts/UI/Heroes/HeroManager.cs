@@ -58,4 +58,19 @@ public class HeroManager : MonoBehaviour
         }
         return Vector3.zero;
     }
+
+    /// <summary>
+    /// Проверяет, есть ли хотя бы один герой с заряженной (100%) ультой.
+    /// </summary>
+    public bool HasAnyUltimateReady()
+    {
+        foreach (Hero hero in activeHeroes)
+        {
+            if (hero != null && hero.currentEnergy >= hero.maxEnergy)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 }

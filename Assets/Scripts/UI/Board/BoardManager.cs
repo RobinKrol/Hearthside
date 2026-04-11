@@ -308,6 +308,20 @@ public class BoardManager : MonoBehaviour
     {
         yield return new WaitForSeconds(swapDuration);
 
+        // Защита от состояния гонки: если таймер истек или ход принудительно завершен, пока крутилась анимация
+        if (gameManager != null && !gameManager.IsTurnActive() && !gameManager.IsTimerRunning())
+        {
+            // Не трогаем isAnimating, управление уже перехвачено OnTurnTimeUp()
+            yield break;
+        }
+
+        // Дополнительная защита: если за время свайпа элементы были собраны или уничтожены
+        if (gem1 == null || gem2 == null || !gem1.gameObject.activeInHierarchy || !gem2.gameObject.activeInHierarchy)
+        {
+            isAnimating = false;
+            yield break;
+        }
+
         int matchesCount = FindMatchesAt(new List<Gem> { gem1, gem2 });
 
         if (matchesCount > 0)

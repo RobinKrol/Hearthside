@@ -18,15 +18,14 @@ public class UIManager : MonoBehaviour
     /// <summary>
     /// Обновляет текстовое отображение текущего хода
     /// </summary>
-    public void UpdateTurnUI(int currentTurn)
+    public void UpdateTurnUI(int currentTurn, int maxTurns)
     {
         if (turnText != null)
         {
-            // Фиксированно 7 ходов. Ограничиваем, чтобы не ушло в 8 при game over
-            int maxTurns = 7;
+            // Ограничиваем, чтобы не ушло за максимум при game over
             int displayTurn = Mathf.Min(currentTurn, maxTurns);
 
-            // Выводим просто число текущего хода, без " / 7"
+            // Выводим просто число текущего хода
             turnText.text = displayTurn.ToString();
         }
     }

@@ -53,10 +53,21 @@ public class OrderManager : MonoBehaviour
         else Destroy(gameObject);
     }
 
+    private int totalSpawnedCustomers = 0;
+    private int maxCustomersForLevel = 999;
+
     private void Start()
     {
-        for (int i = 0; i < maxCustomers; i++)
+        if (GameManager.Instance != null && GameManager.Instance.currentLevel != null)
+        {
+            maxCustomersForLevel = GameManager.Instance.currentLevel.targetDrinksCount;
+        }
+
+        // Спавним начальных посетителей (до лимита одновременно на экране и до общего лимита)
+        for (int i = 0; i < maxCustomers && i < maxCustomersForLevel; i++)
+        {
             TrySpawnCustomer(1.0f + i * 0.5f);
+        }
     }
 
     // ─── Публичные методы ────────────────────────────────────
@@ -171,7 +182,9 @@ public class OrderManager : MonoBehaviour
         yield return new WaitForSeconds(delay);
 
         activeCustomers.RemoveAll(c => c == null);
-        if (activeCustomers.Count >= maxCustomers) yield break;
+        
+        if (activeCustomers.Count >= maxCustomers || totalSpawnedCustomers >= maxCustomersForLevel) 
+            yield break;
 
         if (customerPrefab == null)
         {
@@ -189,11 +202,11 @@ public class OrderManager : MonoBehaviour
         // Выбираем случайную внешность из пула
         CustomerVisuals visuals = GetRandomCustomerVisuals();
 
-        // Выбираем заказ (цвет и размер) из активных героев
-        PickRandomOrder(out Gem.GemColor randomOrderColor, out DrinkSize randomOrderSize);
+        // Выбираем заказ (соответствует цели уровня)
+        PickOrder(out Gem.GemColor orderColor, out DrinkSize orderSize);
 
         // Находим иконку для бабла
-        Sprite orderIcon = GetDrinkIcon(randomOrderColor, randomOrderSize);
+        Sprite orderIcon = GetDrinkIcon(orderColor, orderSize);
 
         // Создаём посетителя
         GameObject newObj = Instantiate(customerPrefab, spawnPoint);
@@ -201,15 +214,25 @@ public class OrderManager : MonoBehaviour
 
         if (newCustomer != null)
         {
-            newCustomer.Setup(randomOrderColor, randomOrderSize, visuals.defaultFace, visuals.happyFace,
+            newCustomer.Setup(orderColor, orderSize, visuals.defaultFace, visuals.happyFace,
                               orderIcon, () => OnCustomerLeft(newCustomer));
             activeCustomers.Add(newCustomer);
-            Debug.Log($"[OrderManager] Посетитель {activeCustomers.Count}/{maxCustomers} хочет: {randomOrderColor} {randomOrderSize}");
+            totalSpawnedCustomers++;
+            Debug.Log($"[OrderManager] Посетитель {totalSpawnedCustomers}/{maxCustomersForLevel} хочет: {orderColor} {orderSize}");
         }
     }
 
-    private void PickRandomOrder(out Gem.GemColor color, out DrinkSize size)
+    private void PickOrder(out Gem.GemColor color, out DrinkSize size)
     {
+        // Теперь каждый посетитель заказывает ровно то, что указано в Target Drinks
+        if (GameManager.Instance != null && GameManager.Instance.currentLevel != null)
+        {
+            color = GameManager.Instance.currentLevel.targetDrinkColor;
+            size = GameManager.Instance.currentLevel.targetDrinkSize;
+            return;
+        }
+
+        // Запасной план, если нет уровня
         if (heroManager != null && heroManager.activeHeroes.Count > 0)
         {
             var validHeroes = heroManager.activeHeroes.FindAll(h => h != null);
