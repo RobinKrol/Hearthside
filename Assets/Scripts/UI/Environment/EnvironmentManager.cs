@@ -23,7 +23,6 @@ public class EnvironmentManager : MonoBehaviour
     [Header("Настройки переходов")]
     public float fadeDuration = 2f; // Длительность плавного перекрестного растворения
 
-    public bool isGameOver { get; private set; } = false;
 
     private void Start()
     {
@@ -54,28 +53,14 @@ public class EnvironmentManager : MonoBehaviour
         turnsInCurrentStage++;
 
         // Проверяем, достигли ли мы конца текущей стадии
-        if (turnsInCurrentStage >= stages[currentStageIndex].turnsDuration)
+        if (turnsInCurrentStage >= stages[currentStageIndex].turnsDuration && currentStageIndex < stages.Length - 1)
         {
             // Переходим к следующей стадии
             currentStageIndex++;
             turnsInCurrentStage = 0; // Сбрасываем счетчик для новой стадии
 
-            // Если стадии закончились — Конец игры
-            if (currentStageIndex >= stages.Length)
-            {
-                TriggerGameOver();
-            }
-            else
-            {
-                // Запускаем плавный переход на спрайт нового времени суток
-                StartCoroutine(CrossfadeBackground(stages[currentStageIndex].backgroundSprite));
-
-                // Если мы переключились на последнюю стадию (Ночь), то играть больше нельзя
-                if (currentStageIndex == stages.Length - 1)
-                {
-                    TriggerGameOver();
-                }
-            }
+            // Запускаем плавный переход на спрайт нового времени суток
+            StartCoroutine(CrossfadeBackground(stages[currentStageIndex].backgroundSprite));
         }
     }
 
@@ -114,18 +99,6 @@ public class EnvironmentManager : MonoBehaviour
         yield return new WaitForSeconds(fadeDuration);
 
         // Уничтожаем временный старый фон под ним
-        Destroy(tempBgObj);
-    }
-
-    private void TriggerGameOver()
-    {
-        isGameOver = true;
-
-        Debug.Log("======================================");
-        Debug.Log("НАСТУПИЛА ИГРОВАЯ НОЧЬ! ХОДЫ ЗАКОНЧИЛИСЬ!");
-        Debug.Log("======================================");
-
-        // Здесь мы позже можем добавить вызов UI окна конца игры,
-        // Остановку скриптов или переход на сцену результатов.
+        if (tempBgObj != null) Destroy(tempBgObj);
     }
 }

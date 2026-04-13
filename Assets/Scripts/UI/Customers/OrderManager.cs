@@ -106,7 +106,12 @@ public class OrderManager : MonoBehaviour
         if (!fulfilledDrinks.ContainsKey(key)) fulfilledDrinks[key] = 0;
         fulfilledDrinks[key]++;
 
-        SaveManager.Instance?.RecordOrderFulfilled();
+        SaveManager.Instance?.RecordOrderFulfilled(heroColor.ToString());
+
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.CheckWinConditionEarly();
+        }
     }
 
     /// <summary>

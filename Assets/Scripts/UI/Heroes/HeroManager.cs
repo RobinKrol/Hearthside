@@ -73,4 +73,15 @@ public class HeroManager : MonoBehaviour
         }
         return false;
     }
+
+    public void HideAllHeroes()
+    {
+        foreach (Hero hero in activeHeroes)
+        {
+            if (hero != null)
+            {
+                hero.gameObject.SetActive(false);
+            }
+        }
+    }
 }

@@ -80,11 +80,12 @@ public class SaveManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Записать выполненный заказ и сохранить.
+    /// Записать выполненный заказ (добавить в инвентарь) и сохранить.
     /// </summary>
-    public void RecordOrderFulfilled()
+    public void RecordOrderFulfilled(string color)
     {
         Data.totalOrdersFulfilled++;
+        Data.AddDrink(color, 1);
         Save();
     }
 

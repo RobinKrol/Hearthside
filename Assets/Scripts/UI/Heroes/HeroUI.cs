@@ -93,6 +93,20 @@ public class HeroUI : MonoBehaviour, IPointerClickHandler
     {
         if (heroData == null) return;
 
+        // Блокируем активацию ульты, если сейчас идет 15-секундный таймер хода
+        if (GameManager.Instance != null && GameManager.Instance.IsTimerRunning())
+        {
+            Debug.Log("[HeroUI] Режим хода активен (таймер идет) — ульту пока использовать нельзя!");
+            return;
+        }
+
+        // Блокируем активацию во время подсчета комбо (доска заблокирована, но еще не ночь)
+        if (GameManager.Instance != null && !GameManager.Instance.IsTurnActive() && !GameManager.Instance.IsGameEnding())
+        {
+            Debug.Log("[HeroUI] Идут каскады — ждем их завершения!");
+            return;
+        }
+
         // Пытаемся потратить энергию (сработает только если 100%)
         if (heroData.TryConsumeEnergy())
         {

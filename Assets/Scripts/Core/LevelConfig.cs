@@ -33,6 +33,7 @@ public class LevelConfig : ScriptableObject
     public int rewardGold = 50;
     public int rewardXP = 30;
     public int rewardKeys = 1;
+    public int rewardGems = 0; // Премиальная валюта
 
     [Header("Item Rewards (Дополнительные предметы)")]
     public List<RewardItemConfig> rewardItems;

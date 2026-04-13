@@ -814,8 +814,8 @@ public class BoardManager : MonoBehaviour
             // Применяем математику комбо ко всем собранным за этот ход(включая каскады) кристаллам:
             ApplyTurnEnergyToHeroes();
 
-            // Если игра закончилась, оставляем поле заблокированным
-            if (environmentManager != null && environmentManager.isGameOver)
+            // Если игра закончилась (ночь или досрочная победа), оставляем поле заблокированным
+            if (gameManager != null && gameManager.IsGameEnding())
             {
                 Debug.Log("Игра окончена, ходы заблокированы.");
             }

@@ -20,13 +20,17 @@ public class PlayerData
 
     // ─── Герои ──────────────────────────────────────────────
     // ID строкой = "hero_red", "hero_green" и т.д.
-    // Стартовый герой разблокирован по умолчанию
     public List<string> unlockedHeroIds = new List<string> { "hero_red" };
+    // Уровни героев (ID -> Level)
+    public SerializableDictionary<string, int> heroLevels = new SerializableDictionary<string, int>();
 
-    // ─── Кафе ───────────────────────────────────────────────
-    // Словарь: название апгрейда → текущий уровень (0 = не куплен)
-    // Пример: { "tables": 1, "kitchen": 2 }
+    // ─── Ресурсы уровней (Материалы) ────────────────────────
+    // Ключ: название цвета (например, "Red", "Green"), Значение: количество
+    public SerializableDictionary<string, int> collectedDrinks = new SerializableDictionary<string, int>();
+
+    // ─── Кафе / Магазины ────────────────────────────────────
     public SerializableDictionary<string, int> cafeUpgrades = new SerializableDictionary<string, int>();
+    public SerializableDictionary<string, ShopSaveData> shopStates = new SerializableDictionary<string, ShopSaveData>();
 
     // ─── Вспомогательные методы ─────────────────────────────
 
@@ -71,4 +75,38 @@ public class PlayerData
         coins -= amount;
         return true;
     }
+
+    /// <summary>Сохраняет собранный напиток (с учетом цвета).</summary>
+    public void AddDrink(string colorName, int count)
+    {
+        if (collectedDrinks.ContainsKey(colorName))
+            collectedDrinks[colorName] += count;
+        else
+            collectedDrinks[colorName] = count;
+    }
+
+    /// <summary>Возвращает количество накопленных напитков конкретного цвета.</summary>
+    public int GetDrinkCount(string colorName)
+    {
+        return collectedDrinks.ContainsKey(colorName) ? collectedDrinks[colorName] : 0;
+    }
+
+    /// <summary>Списывает напитки (для запуска магазина). Возвращает true, если успешно.</summary>
+    public bool SpendDrinks(string colorName, int amount)
+    {
+        int current = GetDrinkCount(colorName);
+        if (current < amount) return false;
+        collectedDrinks[colorName] = current - amount;
+        return true;
+    }
+}
+
+/// <summary>
+/// Данные о состоянии конкретного магазина/здания.
+/// </summary>
+[Serializable]
+public class ShopSaveData
+{
+    public int level = 0;             // 0 = не куплен
+    public long timerStartTicks = 0;  // Время последнего запуска таймера (или 0, если простаивает)
 }

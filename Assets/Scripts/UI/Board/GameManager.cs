@@ -11,7 +11,7 @@ public class GameManager : MonoBehaviour
     
     [Header("Turn & Timer Logic")]
     public float turnDuration = 15f;
-    public int turnCount = 1;
+    public int turnCount = 0;
 
     [Header("References")]
     public UIManager uiManager;
@@ -81,6 +81,11 @@ public class GameManager : MonoBehaviour
         return currentTimer;
     }
 
+    public bool IsGameEnding()
+    {
+        return isNight || isGameOverTriggered;
+    }
+
     public void OnFirstComboMatch()
     {
         if (!isTimerRunning && isTurnActive)
@@ -122,8 +127,8 @@ public class GameManager : MonoBehaviour
             uiManager.UpdateTurnUI(turnCount, maxTurns);
         }
 
-        // Если превышен лимит ходов — наступает ночь
-        if (turnCount > maxTurns)
+        // Если превышен лимит ходов (игроком совершено maxTurns ходов) — наступает ночь
+        if (turnCount >= maxTurns)
         {
             TriggerNightPhase();
         }
@@ -138,19 +143,45 @@ public class GameManager : MonoBehaviour
         CheckEndGameCondition();
     }
 
+    private bool isGameOverTriggered = false;
+
     /// <summary>
-    /// Проверяет, можно ли закончить игру и показать окно наград.
+    /// Проверяет, можно ли закончить игру досрочно (все заказы выполнены).
+    /// Должна вызываться из OrderManager при успешной подаче напитка.
+    /// </summary>
+    public void CheckWinConditionEarly()
+    {
+        if (isGameOverTriggered || currentLevel == null) return;
+        
+        int fulfilled = OrderManager.Instance != null ? OrderManager.Instance.GetFulfilledCount(currentLevel.targetDrinkColor, currentLevel.targetDrinkSize) : 0;
+        if (fulfilled >= currentLevel.targetDrinksCount)
+        {
+            Debug.Log("[GameManager] Все заказы выполнены! Досрочная победа!");
+            isGameOverTriggered = true;
+            isTimerRunning = false;
+            isTurnActive = false; // Блокируем доску
+            
+            Invoke(nameof(ShowAwardScreen), 1.5f);
+        }
+    }
+
+    /// <summary>
+    /// Проверяет, можно ли закончить игру из-за наступления ночи.
     /// Должна вызываться при наступлении ночи и после каждой использованной ульты.
     /// </summary>
     public void CheckEndGameCondition()
     {
-        if (!isNight) return;
+        if (!isNight || isGameOverTriggered) return;
 
         bool hasUltimate = heroManager != null && heroManager.HasAnyUltimateReady();
 
         if (!hasUltimate)
         {
-            ShowAwardScreen();
+            isGameOverTriggered = true;
+            isTimerRunning = false;
+            isTurnActive = false; // Блокируем доску
+            
+            Invoke(nameof(ShowAwardScreen), 1.5f);
         }
         else
         {
@@ -161,6 +192,25 @@ public class GameManager : MonoBehaviour
     private void ShowAwardScreen()
     {
         if (awardUI == null || currentLevel == null) return;
+
+        // Очищаем и скрываем доску с кристаллами, чтобы они не мешали окну
+        if (boardManager != null)
+        {
+            boardManager.ClearBoard();
+            boardManager.gameObject.SetActive(false);
+        }
+
+        // Скрываем героев и их спавнер
+        if (heroManager != null)
+        {
+            heroManager.HideAllHeroes();
+        }
+        
+        HeroSpawner spawner = FindAnyObjectByType<HeroSpawner>();
+        if (spawner != null)
+        {
+            spawner.gameObject.SetActive(false);
+        }
 
         // Проверяем победу по заказам
         int fulfilled = OrderManager.Instance != null ? OrderManager.Instance.GetFulfilledCount(currentLevel.targetDrinkColor, currentLevel.targetDrinkSize) : 0;
